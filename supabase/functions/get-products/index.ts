@@ -1,7 +1,6 @@
-// @ts-nocheck
 // Supabase Edge Function: get-products
-// Official Authoritative Product Catalog Endpoint (Deno / Supabase runtime)
-// Compatible with Duitku POP Item Details Specification (RFC & ISO 4217 IDR)
+// Catalog source of truth: public.products
+// Keeps the JSON-array contract consumed by server.ts.
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
@@ -12,254 +11,107 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-// Authoritative fallback catalog matching public.products table
-const defaultFallbackProducts = [
-  {
-    id: "APP-001-BLK-M",
-    title: "Kaos Katun Premium Hitam",
-    description: "Kaos katun combed 30s premium dengan jahitan rapi dan adem sepanjang hari.",
-    availability: "in stock",
-    condition: "new",
-    price: 125000,
-    sale_price: 99000,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Basic",
-    product_type: "Apparel",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-  {
-    id: "APP-001-WHT-L",
-    title: "Kaos Katun Premium Putih",
-    description: "Kaos katun combed 30s putih bersih, tidak mudah melar dan nyaman dipakai.",
-    availability: "in stock",
-    condition: "new",
-    price: 125000,
-    sale_price: 99000,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Basic",
-    product_type: "Apparel",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-  {
-    id: "APP-002",
-    title: "Kemeja Linen Lengan Pendek",
-    description: "Kemeja casual bahan linen breathable dengan kerah resort modern.",
-    availability: "in stock",
-    condition: "new",
-    price: 215000,
-    sale_price: null,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Casual",
-    product_type: "Apparel",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-  {
-    id: "APP-003",
-    title: "Hoodie Fleece Unisex",
-    description: "Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.",
-    availability: "in stock",
-    condition: "new",
-    price: 275000,
-    sale_price: null,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Wear",
-    product_type: "Apparel",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-  {
-    id: "SHO-001",
-    title: "Sneakers Klasik Kanvas",
-    description: "Sepatu sneakers kanvas dengan sol empuk anti-slip untuk mobilitas tinggi.",
-    availability: "in stock",
-    condition: "new",
-    price: 349000,
-    sale_price: 299000,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Footwear",
-    product_type: "Shoes",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-  {
-    id: "SHO-002",
-    title: "Sepatu Lari Ultralight",
-    description: "Sepatu running ringan dengan bantalan cushion responsif untuk kenyamanan optimal.",
-    availability: "in stock",
-    condition: "new",
-    price: 489000,
-    sale_price: null,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Sport",
-    product_type: "Shoes",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-  {
-    id: "BAG-001",
-    title: "Ransel Laptop Waterproof",
-    description: "Backpack tahan air dengan kompartemen laptop 15.6 inch dan busa punggung empuk.",
-    availability: "in stock",
-    condition: "new",
-    price: 319000,
-    sale_price: null,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Bags",
-    product_type: "Accessories",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-  {
-    id: "BAG-002",
-    title: "Tas Selempang Kanvas Mini",
-    description: "Sling bag praktis untuk dompet, ponsel, dan barang bawaan esensial harian.",
-    availability: "in stock",
-    condition: "new",
-    price: 145000,
-    sale_price: null,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Bags",
-    product_type: "Accessories",
-    created_at: "2026-10-09T19:21:07.237165+00:00",
-    updated_at: "2026-10-09T19:21:07.237165+00:00",
-  },
-];
+function jsonResponse(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": status === 200
+        ? "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+        : "no-store",
+      ...extraHeaders,
+    },
+  });
+}
 
 serve(async (req: Request) => {
-  // CORS Preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  if (req.method !== "GET") {
+    return jsonResponse({ error: "Method not allowed" }, 405, { "Allow": "GET, OPTIONS" });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const apiKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY");
+
+  if (!supabaseUrl || !apiKey) {
+    console.error("get-products: Supabase URL or API key is not configured");
+    return jsonResponse({ error: "Product catalog is temporarily unavailable" }, 500);
+  }
+
   try {
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id")?.trim();
+    const category = (url.searchParams.get("category") || url.searchParams.get("type") || "").trim();
+    const availability = url.searchParams.get("availability")?.trim();
+    const rawSearch = (url.searchParams.get("search") || "").trim();
+    // Remove PostgREST filter syntax and punctuation from user-supplied search terms.
+    const search = rawSearch.replace(/[^\p{L}\p{N}\s]/gu, "").trim().slice(0, 100);
+    const sort = url.searchParams.get("sort");
+    const rawLimit = url.searchParams.get("limit");
+    const parsedLimit = rawLimit === null ? 100 : Number(rawLimit);
 
-    const apiKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
-
-    let products = [];
-
-    // Jika Supabase credentials terkonfigurasi, kueri langsung tabel 'products'
-    if (SUPABASE_URL && apiKey) {
-      const supabase = createClient(SUPABASE_URL, apiKey);
-      const url = new URL(req.url);
-
-      const id = url.searchParams.get("id");
-      const category = url.searchParams.get("category") || url.searchParams.get("type");
-      const availability = url.searchParams.get("availability");
-      const search = url.searchParams.get("search");
-      const sort = url.searchParams.get("sort");
-      const limit = parseInt(url.searchParams.get("limit") || "100", 10);
-
-      let query = supabase.from("products").select("*");
-
-      if (id) {
-        query = query.eq("id", id);
-      }
-
-      if (category && category !== "all") {
-        query = query.ilike("product_type", `%${category}%`);
-      }
-
-      if (availability) {
-        query = query.eq("availability", availability);
-      }
-
-      if (search && search.trim()) {
-        const term = search.trim();
-        query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%,brand.ilike.%${term}%,id.ilike.%${term}%`);
-      }
-
-      if (sort === "price_asc") {
-        query = query.order("price", { ascending: true });
-      } else if (sort === "price_desc") {
-        query = query.order("price", { ascending: false });
-      } else {
-        query = query.order("created_at", { ascending: false });
-      }
-
-      query = query.limit(limit);
-
-      const { data, error } = await query;
-
-      if (!error && data && data.length > 0) {
-        products = data;
-      } else {
-        // Fallback jika query kosong atau tabel belum ada data
-        if (id) {
-          const matched = defaultFallbackProducts.filter((p) => p.id === id);
-          products = matched.length > 0 ? matched : defaultFallbackProducts;
-        } else {
-          products = defaultFallbackProducts;
-        }
-      }
-    } else {
-      // Fallback lokal mode
-      const url = new URL(req.url);
-      const id = url.searchParams.get("id");
-      if (id) {
-        const matched = defaultFallbackProducts.filter((p) => p.id === id);
-        products = matched.length > 0 ? matched : defaultFallbackProducts;
-      } else {
-        products = defaultFallbackProducts;
-      }
+    if (rawLimit !== null && (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100)) {
+      return jsonResponse({ error: "limit must be an integer between 1 and 100" }, 400);
+    }
+    if (id !== undefined && id.length > 200) {
+      return jsonResponse({ error: "Invalid product id" }, 400);
     }
 
-    // Standardisasi & sanitasi data produk sesuai format Duitku POP itemDetails
-    const sanitizedProducts = products.map((p: any) => {
-      const priceNum = Math.round(Number(p.price) || 0);
-      const salePriceNum = p.sale_price !== null && p.sale_price !== undefined 
-        ? Math.round(Number(p.sale_price)) 
-        : null;
+    const supabase = createClient(supabaseUrl, apiKey);
+    let query = supabase.from("products").select("*");
 
-      return {
-        id: String(p.id),
-        title: String(p.title || "").substring(0, 50), // Duitku itemDetails name max 50 chars
-        description: String(p.description || ""),
-        availability: p.availability || "in stock",
-        condition: p.condition || "new",
-        price: priceNum,
-        sale_price: salePriceNum,
-        currency: "IDR",
-        image_link: p.image_link || "",
-        brand: p.brand || "Asri Collection",
-        product_type: p.product_type || "General",
-        display_image: p.image_link,
-        created_at: p.created_at || new Date().toISOString(),
-        updated_at: p.updated_at || new Date().toISOString(),
-      };
-    });
+    if (id) query = query.eq("id", id);
+    if (category && category.toLowerCase() !== "all") {
+      query = query.ilike("product_type", `%${category.replace(/[%_]/g, "")}%`);
+    }
+    if (availability) query = query.eq("availability", availability);
+    if (search) {
+      query = query.or(
+        `title.ilike.%${search}%,description.ilike.%${search}%,brand.ilike.%${search}%,id.ilike.%${search}%`,
+      );
+    }
 
-    return new Response(JSON.stringify(sanitizedProducts), {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-        // Edge CDN Caching: cache selama 60 detik di browser dan 300 detik di Supabase Edge CDN
-        "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=600",
-      },
-    });
-  } catch (err: any) {
-    console.error("Error in get-products function:", err.message);
-    // Return fallback graceful daripada 500 error
-    return new Response(JSON.stringify(defaultFallbackProducts), {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
-    });
+    if (sort === "price_asc") {
+      query = query.order("price", { ascending: true });
+    } else if (sort === "price_desc") {
+      query = query.order("price", { ascending: false });
+    } else {
+      query = query.order("created_at", { ascending: false });
+    }
+
+    const { data, error } = await query.limit(parsedLimit);
+    if (error) {
+      console.error("get-products database query failed:", error.message);
+      return jsonResponse({ error: "Unable to retrieve product catalog" }, 502);
+    }
+
+    const sanitizedProducts = (data || []).map((p: any) => ({
+      id: String(p.id ?? ""),
+      title: String(p.title || "").substring(0, 50),
+      description: String(p.description || ""),
+      availability: p.availability || "in stock",
+      condition: p.condition || "new",
+      price: Math.round(Number(p.price) || 0),
+      sale_price: p.sale_price !== null && p.sale_price !== undefined
+        ? Math.round(Number(p.sale_price))
+        : null,
+      currency: "IDR",
+      image_link: p.image_link || "",
+      brand: p.brand || "Asri Collection",
+      product_type: p.product_type || "General",
+      display_image: p.image_link || "",
+      created_at: p.created_at || null,
+      updated_at: p.updated_at || null,
+    }));
+
+    // Empty query results and unknown IDs intentionally return []—never fabricated products.
+    return jsonResponse(sanitizedProducts);
+  } catch (err) {
+    console.error("get-products unexpected error:", err instanceof Error ? err.message : String(err));
+    return jsonResponse({ error: "Product catalog is temporarily unavailable" }, 500);
   }
 });

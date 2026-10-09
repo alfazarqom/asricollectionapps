@@ -29,21 +29,23 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
     else navigate('/');
   };
 
-  // Derive categories from product data
-  const categories = ['Semua', 'Pakaian', 'Sepatu', 'Tas'];
+  // Derive dynamic categories directly from active products
+  const categories = React.useMemo(() => {
+    const types = Array.from(
+      new Set(
+        products
+          .map((p) => p.product_type?.trim())
+          .filter((t): t is string => Boolean(t))
+      )
+    );
+    return ['Semua', ...types];
+  }, [products]);
 
   const getFilteredProducts = () => {
     if (activeCategory === 'Semua') return products;
-    if (activeCategory === 'Pakaian') {
-      return products.filter((p) => p.product_type?.toLowerCase().includes('pakaian') || p.id.startsWith('APP'));
-    }
-    if (activeCategory === 'Sepatu') {
-      return products.filter((p) => p.product_type?.toLowerCase().includes('sepatu') || p.id.startsWith('SHO'));
-    }
-    if (activeCategory === 'Tas') {
-      return products.filter((p) => p.product_type?.toLowerCase().includes('tas') || p.id.startsWith('BAG'));
-    }
-    return products;
+    return products.filter(
+      (p) => p.product_type?.toLowerCase() === activeCategory.toLowerCase()
+    );
   };
 
   const filtered = getFilteredProducts();

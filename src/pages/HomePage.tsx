@@ -24,7 +24,21 @@ export const HomePage: React.FC<HomePageProps> = ({
 }) => {
   const { totalItems } = useCart();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'sale' | 'clothing' | 'shoes' | 'bags'>('all');
+  const [selectedFilter, setSelectedFilter] = useState<string>('all');
+
+  const dynamicCategories = React.useMemo(() => {
+    return Array.from(
+      new Set(
+        products
+          .map((p) => p.product_type?.trim())
+          .filter((t): t is string => Boolean(t))
+      )
+    );
+  }, [products]);
+
+  const hasSaleProducts = React.useMemo(() => {
+    return products.some((p) => p.sale_price !== null && p.sale_price !== undefined);
+  }, [products]);
 
   // Filter products based on search query and chip filter
   const filteredProducts = products.filter((p) => {
@@ -38,14 +52,8 @@ export const HomePage: React.FC<HomePageProps> = ({
     if (selectedFilter === 'sale') {
       return p.sale_price !== null && p.sale_price !== undefined;
     }
-    if (selectedFilter === 'clothing') {
-      return p.product_type?.toLowerCase().includes('pakaian') || p.id.startsWith('APP');
-    }
-    if (selectedFilter === 'shoes') {
-      return p.product_type?.toLowerCase().includes('sepatu') || p.id.startsWith('SHO');
-    }
-    if (selectedFilter === 'bags') {
-      return p.product_type?.toLowerCase().includes('tas') || p.id.startsWith('BAG');
+    if (selectedFilter !== 'all') {
+      return p.product_type?.toLowerCase() === selectedFilter.toLowerCase();
     }
     return true;
   });
@@ -155,46 +163,31 @@ export const HomePage: React.FC<HomePageProps> = ({
           >
             Semua Produk
           </button>
-          <button
-            onClick={() => setSelectedFilter('sale')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1 transition-all ${
-              selectedFilter === 'sale'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-white text-gray-600 border border-gray-200'
-            }`}
-          >
-            <Tag className="w-3 h-3" /> Diskon Spesial
-          </button>
-          <button
-            onClick={() => setSelectedFilter('clothing')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
-              selectedFilter === 'clothing'
-                ? 'bg-[#2563EB] text-white shadow-xs'
-                : 'bg-white text-gray-600 border border-gray-200'
-            }`}
-          >
-            Pakaian
-          </button>
-          <button
-            onClick={() => setSelectedFilter('shoes')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
-              selectedFilter === 'shoes'
-                ? 'bg-[#2563EB] text-white shadow-xs'
-                : 'bg-white text-gray-600 border border-gray-200'
-            }`}
-          >
-            Sepatu
-          </button>
-          <button
-            onClick={() => setSelectedFilter('bags')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
-              selectedFilter === 'bags'
-                ? 'bg-[#2563EB] text-white shadow-xs'
-                : 'bg-white text-gray-600 border border-gray-200'
-            }`}
-          >
-            Tas
-          </button>
+          {hasSaleProducts && (
+            <button
+              onClick={() => setSelectedFilter('sale')}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap flex items-center gap-1 transition-all ${
+                selectedFilter === 'sale'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'bg-white text-gray-600 border border-gray-200'
+              }`}
+            >
+              <Tag className="w-3 h-3" /> Diskon Spesial
+            </button>
+          )}
+          {dynamicCategories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedFilter(cat)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                selectedFilter === cat
+                  ? 'bg-[#2563EB] text-white shadow-xs'
+                  : 'bg-white text-gray-600 border border-gray-200'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
       </div>
 
