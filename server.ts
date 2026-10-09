@@ -108,173 +108,28 @@ const seedSampleData = () => {
 };
 seedSampleData();
 
-// Curated high quality product images map as fallback for sample domain images
-const curatedImageMap: Record<string, string> = {
-  'APP-003': 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80', // Hoodie
-  'APP-001-BLK-M': 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80', // Kaos Hitam
-  'APP-001-WHT-L': 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80', // Kaos Putih
-  'APP-002': 'https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80', // Kemeja Linen
-  'SHO-002': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80', // Sepatu Lari
-  'SHO-001': 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80', // Sneakers
-  'BAG-001': 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80', // Ransel
-  'BAG-002': 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80', // Tas Selempang
-};
-
-const defaultProductsList = [
-  {
-    id: 'APP-001-BLK-M',
-    title: 'Kaos Katun Premium Hitam',
-    description: 'Kaos katun combed 30s premium dengan jahitan rapi dan adem sepanjang hari.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 125000,
-    sale_price: 99000,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Basic',
-    product_type: 'Apparel',
-    display_image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-  {
-    id: 'APP-001-WHT-L',
-    title: 'Kaos Katun Premium Putih',
-    description: 'Kaos katun combed 30s putih bersih, tidak mudah melar dan nyaman dipakai.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 125000,
-    sale_price: 99000,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Basic',
-    product_type: 'Apparel',
-    display_image: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-  {
-    id: 'APP-002',
-    title: 'Kemeja Linen Lengan Pendek',
-    description: 'Kemeja casual bahan linen breathable dengan kerah resort modern.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 215000,
-    sale_price: null,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Casual',
-    product_type: 'Apparel',
-    display_image: 'https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-  {
-    id: 'APP-003',
-    title: 'Hoodie Fleece Unisex',
-    description: 'Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 275000,
-    sale_price: null,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Wear',
-    product_type: 'Apparel',
-    display_image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-  {
-    id: 'SHO-001',
-    title: 'Sneakers Klasik Kanvas',
-    description: 'Sepatu sneakers kanvas dengan sol empuk anti-slip untuk mobilitas tinggi.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 349000,
-    sale_price: 299000,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Footwear',
-    product_type: 'Shoes',
-    display_image: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-  {
-    id: 'SHO-002',
-    title: 'Sepatu Lari Ultralight',
-    description: 'Sepatu running ringan dengan bantalan cushion responsif untuk kenyamanan optimal.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 489000,
-    sale_price: null,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Sport',
-    product_type: 'Shoes',
-    display_image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-  {
-    id: 'BAG-001',
-    title: 'Ransel Laptop Waterproof',
-    description: 'Backpack tahan air dengan kompartemen laptop 15.6 inch dan busa punggung empuk.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 319000,
-    sale_price: null,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Bags',
-    product_type: 'Accessories',
-    display_image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-  {
-    id: 'BAG-002',
-    title: 'Tas Selempang Kanvas Mini',
-    description: 'Sling bag praktis untuk dompet, ponsel, dan barang bawaan esensial harian.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 145000,
-    sale_price: null,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Bags',
-    product_type: 'Accessories',
-    display_image: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80',
-    created_at: '2026-10-09T19:21:07.237165+00:00',
-    updated_at: '2026-10-09T19:21:07.237165+00:00',
-  },
-];
-
-// Helper: Fetch Authoritative Product Catalog from Supabase get-products Edge Function
+// Fetch the authoritative product catalog from Supabase.
+// Never substitute local/sample products when the source is empty or unavailable.
 async function fetchAuthoritativeProducts(queryString?: string) {
   const baseUrl = 'https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products';
   const url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
 
-  try {
-    const response = await fetch(url, { headers: { 'User-Agent': 'AsriCollection-Backend/1.0' } });
-    if (response.ok) {
-      const products = await response.json();
-      if (Array.isArray(products) && products.length > 0) {
-        return products.map((p: any) => ({
-          ...p,
-          display_image: p.display_image || p.image_link || curatedImageMap[p.id],
-        }));
-      }
-    }
-  } catch (err: any) {
-    console.warn('Fallback to local product catalog:', err.message);
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'AsriCollection-Backend/1.0' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Product catalog source returned HTTP ${response.status}`);
   }
 
-  // Fallback graceful
-  return defaultProductsList.map((p: any) => ({
+  const products: unknown = await response.json();
+  if (!Array.isArray(products)) {
+    throw new Error('Product catalog source returned an invalid response format');
+  }
+
+  return products.map((p: any) => ({
     ...p,
-    display_image: curatedImageMap[p.id] || p.image_link,
+    display_image: p.display_image || p.image_link || '',
   }));
 }
 
