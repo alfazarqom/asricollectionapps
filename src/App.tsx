@@ -45,12 +45,40 @@ export function AppContent() {
     setIsLoadingProducts(true);
     setProductError(null);
     try {
-      const res = await fetch('/api/products');
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Gagal memuat katalog produk.');
+      let data: any = null;
+
+      // 1. Coba panggil /api/products (didukung di local dev dan Vercel rewrite)
+      try {
+        const res = await fetch('/api/products');
+        if (res.ok) {
+          data = await res.json();
+        }
+      } catch (err) {
+        console.warn('Koneksi /api/products tidak tersedia, beralih ke Supabase langsung:', err);
       }
-      setProducts(data.data || []);
+
+      // 2. Jika /api/products gagal, ambil langsung dari Supabase endpoint
+      if (!data) {
+        const directRes = await fetch('https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products');
+        if (!directRes.ok) {
+          throw new Error(`Gagal memuat katalog produk dari database (HTTP ${directRes.status}).`);
+        }
+        data = await directRes.json();
+      }
+
+      // 3. Parser fleksibel: mendukung array langsung [...] maupun objek { success: true, data: [...] }
+      let productList: Product[] = [];
+      if (Array.isArray(data)) {
+        productList = data;
+      } else if (data && Array.isArray(data.data)) {
+        productList = data.data;
+      } else if (data && data.success && Array.isArray(data.products)) {
+        productList = data.products;
+      } else {
+        throw new Error(data?.error || 'Format data katalog tidak sesuai.');
+      }
+
+      setProducts(productList);
     } catch (err: any) {
       console.error('Error fetching catalog:', err);
       setProductError(err.message || 'Koneksi ke endpoint produk terputus.');

@@ -44,17 +44,33 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         setActiveProduct(found);
         setIsLoading(false);
       } else {
-        // Fetch from API
-        fetch('/api/products')
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success && Array.isArray(data.data)) {
-              const item = data.data.find((p: Product) => p.id === id);
+        // Fetch from API (dengan fallback Supabase langsung)
+        const parseProducts = (resData: any): Product[] => {
+          if (Array.isArray(resData)) return resData;
+          if (resData && Array.isArray(resData.data)) return resData.data;
+          return [];
+        };
+
+        const loadDetail = async () => {
+          try {
+            let res = await fetch(`/api/products?id=${encodeURIComponent(id)}`);
+            if (!res.ok) {
+              res = await fetch(`https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products?id=${encodeURIComponent(id)}`);
+            }
+            if (res.ok) {
+              const resData = await res.json();
+              const list = parseProducts(resData);
+              const item = list.find((p: Product) => p.id === id) || (list.length === 1 ? list[0] : null);
               if (item) setActiveProduct(item);
             }
-          })
-          .catch((err) => console.warn('Error fetching product detail:', err))
-          .finally(() => setIsLoading(false));
+          } catch (err) {
+            console.warn('Error fetching product detail:', err);
+          } finally {
+            setIsLoading(false);
+          }
+        };
+
+        loadDetail();
       }
     }
   }, [id, initialProduct, products]);

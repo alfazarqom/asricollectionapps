@@ -6,6 +6,10 @@
       "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products"
     },
     {
+      "source": "/api/products/(.*)",
+      "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products"
+    },
+    {
       "source": "/api/create-invoice",
       "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/duitku-create-invoice"
     },
