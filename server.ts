@@ -714,13 +714,13 @@ app.post('/api/duitku-check-status', async (req: Request, res: Response) => {
   return res.json({ success: true, paymentStatus: order.payment_status });
 });
 
-// 6. POST /api/orders/track (Guest Order Search with verification)
+// 6. POST /api/orders/track (Guest Order Search with optional verification)
 app.post('/api/orders/track', (req: Request, res: Response) => {
   const { orderNumber, phoneOrEmail } = req.body;
-  if (!orderNumber || !phoneOrEmail) {
+  if (!orderNumber) {
     return res.status(400).json({
       success: false,
-      error: 'Harap masukkan nomor pesanan dan nomor telepon/email.',
+      error: 'Harap masukkan nomor pesanan Anda.',
     });
   }
 
@@ -729,19 +729,22 @@ app.post('/api/orders/track', (req: Request, res: Response) => {
     return res.status(404).json({ success: false, error: 'Pesanan dengan nomor tersebut tidak ditemukan.' });
   }
 
-  const cleanInput = phoneOrEmail.trim().toLowerCase();
-  const phoneClean = cleanInput.replace(/\D/g, '');
-  const orderPhoneClean = order.customer_phone.replace(/\D/g, '');
+  // Jika pelanggan menyertakan phoneOrEmail, validasi kecocokannya
+  if (phoneOrEmail && phoneOrEmail.trim()) {
+    const cleanInput = phoneOrEmail.trim().toLowerCase();
+    const phoneClean = cleanInput.replace(/\D/g, '');
+    const orderPhoneClean = order.customer_phone.replace(/\D/g, '');
 
-  const matches =
-    order.customer_email.toLowerCase() === cleanInput ||
-    (phoneClean.length >= 8 && orderPhoneClean.includes(phoneClean));
+    const matches =
+      order.customer_email.toLowerCase() === cleanInput ||
+      (phoneClean.length >= 8 && orderPhoneClean.includes(phoneClean));
 
-  if (!matches) {
-    return res.status(403).json({
-      success: false,
-      error: 'Nomor pesanan cocok, tetapi nomor telepon/email yang dimasukkan tidak sesuai.',
-    });
+    if (!matches) {
+      return res.status(403).json({
+        success: false,
+        error: 'Nomor pesanan cocok, tetapi nomor telepon/email yang dimasukkan tidak sesuai.',
+      });
+    }
   }
 
   const { access_token, ...safeOrder } = order;

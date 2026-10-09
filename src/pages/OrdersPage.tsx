@@ -85,8 +85,8 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
 
   const handleTrackOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orderNumberInput.trim() || !verificationInput.trim()) {
-      setErrorMessage('Harap isi Nomor Pesanan dan Nomor HP/Email terdaftar untuk verifikasi kepemilikan.');
+    if (!orderNumberInput.trim()) {
+      setErrorMessage('Harap masukkan Nomor Pesanan Anda.');
       return;
     }
 
@@ -98,14 +98,14 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderNumber: orderNumberInput.trim(),
-          phoneOrEmail: verificationInput.trim(),
+          orderNumber: orderNumberInput.trim().toUpperCase(),
+          phoneOrEmail: verificationInput.trim() || undefined,
         }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Pesanan tidak ditemukan atau data verifikasi tidak sesuai.');
+        throw new Error(data.error || 'Pesanan tidak ditemukan.');
       }
 
       setActiveOrder(data.order);
@@ -296,7 +296,7 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                 <Search className="w-3.5 h-3.5 text-[#2563EB]" /> Cek Status Pesanan
               </h2>
               <p className="text-[11px] text-gray-500">
-                Sebagai perlindungan privasi guest checkout, masukkan nomor pesanan serta nomor telepon atau email yang Anda gunakan saat pemesanan.
+                Masukkan nomor pesanan yang Anda terima saat checkout untuk melihat status pembayaran, verifikasi invoice, dan status pengiriman kurir.
               </p>
 
               <div>
@@ -309,19 +309,6 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                   onChange={(e) => setOrderNumberInput(e.target.value)}
                   placeholder="Contoh: ORD-20261009-88123"
                   className="w-full h-10 px-3 bg-slate-50 border border-gray-200 rounded-xl text-xs font-mono text-gray-900 focus:outline-none focus:border-[#2563EB] focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-medium text-gray-700 block mb-1">
-                  Nomor HP atau Email Terdaftar *
-                </label>
-                <input
-                  type="text"
-                  value={verificationInput}
-                  onChange={(e) => setVerificationInput(e.target.value)}
-                  placeholder="0812xxxx / email@domain.com"
-                  className="w-full h-10 px-3 bg-slate-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-[#2563EB] focus:bg-white"
                 />
               </div>
 
