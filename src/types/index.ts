@@ -20,6 +20,8 @@ export interface Product {
   size?: string;
   status?: string;
   display_image?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CartItem {

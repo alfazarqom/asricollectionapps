@@ -74,6 +74,9 @@ supabase functions deploy get-duitku-payment-status
    - `APP_URL` (`https://your-app.vercel.app`)
 3. Build Command: `npm run build`
 4. Output Directory: `dist`
+5. File `vercel.json` sudah disediakan di root untuk menangani:
+   - **SPA Routing (Single Page App):** Memastikan rute seperti `/categories`, `/orders`, `/cart`, dll. tidak 404 saat direfresh dengan rewrite ke `/index.html`.
+   - **API Proxy:** Meneruskan `/api/products` dan transaksi Duitku ke Supabase Edge Functions.
 
 ---
 

@@ -124,7 +124,6 @@ export function AppContent() {
           path="/account"
           element={
             <AccountPage
-              onSwitchToAdmin={() => navigate('/admin')}
               onGoToOrders={() => navigate('/orders')}
             />
           }

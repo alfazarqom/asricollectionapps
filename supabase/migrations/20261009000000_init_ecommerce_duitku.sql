@@ -257,18 +257,29 @@ CREATE TABLE IF NOT EXISTS public.products (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
--- Seed katalog awal jika belum ada
-INSERT INTO public.products (id, title, description, availability, condition, price, sale_price, currency, image_link, brand, product_type)
+-- Seed / Sinkronisasi katalog produk
+INSERT INTO public.products (id, title, description, availability, condition, price, sale_price, currency, image_link, brand, product_type, created_at, updated_at)
 VALUES
-    ('APP-003', 'Hoodie Fleece Unisex', 'Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.', 'in stock', 'new', 275000, NULL, 'IDR', 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80', 'Asri Wear', 'Apparel'),
-    ('APP-001-BLK-M', 'Kaos Katun Premium Hitam', 'Kaos katun combed 30s premium dengan jahitan rapi dan adem sepanjang hari.', 'in stock', 'new', 125000, 99000, 'IDR', 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80', 'Asri Basic', 'Apparel'),
-    ('APP-001-WHT-L', 'Kaos Katun Premium Putih', 'Kaos katun combed 30s putih bersih, tidak mudah melar dan nyaman dipakai.', 'in stock', 'new', 125000, 99000, 'IDR', 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80', 'Asri Basic', 'Apparel'),
-    ('APP-002', 'Kemeja Linen Lengan Pendek', 'Kemeja casual bahan linen breathable dengan kerah resort modern.', 'in stock', 'new', 215000, NULL, 'IDR', 'https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80', 'Asri Casual', 'Apparel'),
-    ('SHO-001', 'Sneakers Klasik Kanvas', 'Sepatu sneakers kanvas dengan sol empuk anti-slip untuk mobilitas tinggi.', 'in stock', 'new', 349000, 299000, 'IDR', 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80', 'Asri Footwear', 'Shoes'),
-    ('SHO-002', 'Sepatu Lari Ultralight', 'Sepatu running ringan dengan bantalan cushion responsif untuk kenyamanan optimal.', 'in stock', 'new', 489000, NULL, 'IDR', 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80', 'Asri Sport', 'Shoes'),
-    ('BAG-001', 'Ransel Laptop Waterproof', 'Backpack tahan air dengan kompartemen laptop 15.6 inch dan busa punggung empuk.', 'in stock', 'new', 319000, NULL, 'IDR', 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80', 'Asri Bags', 'Accessories'),
-    ('BAG-002', 'Tas Selempang Kanvas Mini', 'Sling bag praktis untuk dompet, ponsel, dan barang bawaan esensial harian.', 'in stock', 'new', 145000, NULL, 'IDR', 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80', 'Asri Bags', 'Accessories')
-ON CONFLICT (id) DO NOTHING;
+    ('APP-001-BLK-M', 'Kaos Katun Premium Hitam', 'Kaos katun combed 30s premium dengan jahitan rapi dan adem sepanjang hari.', 'in stock', 'new', 125000.00, 99000.00, 'IDR', 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80', 'Asri Basic', 'Apparel', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00'),
+    ('APP-001-WHT-L', 'Kaos Katun Premium Putih', 'Kaos katun combed 30s putih bersih, tidak mudah melar dan nyaman dipakai.', 'in stock', 'new', 125000.00, 99000.00, 'IDR', 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80', 'Asri Basic', 'Apparel', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00'),
+    ('APP-002', 'Kemeja Linen Lengan Pendek', 'Kemeja casual bahan linen breathable dengan kerah resort modern.', 'in stock', 'new', 215000.00, null, 'IDR', 'https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80', 'Asri Casual', 'Apparel', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00'),
+    ('APP-003', 'Hoodie Fleece Unisex', 'Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.', 'in stock', 'new', 275000.00, null, 'IDR', 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80', 'Asri Wear', 'Apparel', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00'),
+    ('SHO-001', 'Sneakers Klasik Kanvas', 'Sepatu sneakers kanvas dengan sol empuk anti-slip untuk mobilitas tinggi.', 'in stock', 'new', 349000.00, 299000.00, 'IDR', 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80', 'Asri Footwear', 'Shoes', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00'),
+    ('SHO-002', 'Sepatu Lari Ultralight', 'Sepatu running ringan dengan bantalan cushion responsif untuk kenyamanan optimal.', 'in stock', 'new', 489000.00, null, 'IDR', 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80', 'Asri Sport', 'Shoes', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00'),
+    ('BAG-001', 'Ransel Laptop Waterproof', 'Backpack tahan air dengan kompartemen laptop 15.6 inch dan busa punggung empuk.', 'in stock', 'new', 319000.00, null, 'IDR', 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80', 'Asri Bags', 'Accessories', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00'),
+    ('BAG-002', 'Tas Selempang Kanvas Mini', 'Sling bag praktis untuk dompet, ponsel, dan barang bawaan esensial harian.', 'in stock', 'new', 145000.00, null, 'IDR', 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80', 'Asri Bags', 'Accessories', '2026-10-09 19:21:07.237165+00', '2026-10-09 19:21:07.237165+00')
+ON CONFLICT (id) DO UPDATE SET
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    availability = EXCLUDED.availability,
+    condition = EXCLUDED.condition,
+    price = EXCLUDED.price,
+    sale_price = EXCLUDED.sale_price,
+    currency = EXCLUDED.currency,
+    image_link = EXCLUDED.image_link,
+    brand = EXCLUDED.brand,
+    product_type = EXCLUDED.product_type,
+    updated_at = EXCLUDED.updated_at;
 
 -- ------------------------------------------------------------------------------
 -- 8. Row Level Security (RLS) Setup

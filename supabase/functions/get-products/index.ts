@@ -12,21 +12,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-// Fallback seed catalog jika tabel di database belum terisi
+// Authoritative fallback catalog matching public.products table
 const defaultFallbackProducts = [
-  {
-    id: "APP-003",
-    title: "Hoodie Fleece Unisex",
-    description: "Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.",
-    availability: "in stock",
-    condition: "new",
-    price: 275000,
-    sale_price: null,
-    currency: "IDR",
-    image_link: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80",
-    brand: "Asri Wear",
-    product_type: "Apparel",
-  },
   {
     id: "APP-001-BLK-M",
     title: "Kaos Katun Premium Hitam",
@@ -39,6 +26,8 @@ const defaultFallbackProducts = [
     image_link: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80",
     brand: "Asri Basic",
     product_type: "Apparel",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
   },
   {
     id: "APP-001-WHT-L",
@@ -52,6 +41,8 @@ const defaultFallbackProducts = [
     image_link: "https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80",
     brand: "Asri Basic",
     product_type: "Apparel",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
   },
   {
     id: "APP-002",
@@ -65,6 +56,23 @@ const defaultFallbackProducts = [
     image_link: "https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80",
     brand: "Asri Casual",
     product_type: "Apparel",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
+  },
+  {
+    id: "APP-003",
+    title: "Hoodie Fleece Unisex",
+    description: "Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.",
+    availability: "in stock",
+    condition: "new",
+    price: 275000,
+    sale_price: null,
+    currency: "IDR",
+    image_link: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80",
+    brand: "Asri Wear",
+    product_type: "Apparel",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
   },
   {
     id: "SHO-001",
@@ -78,6 +86,8 @@ const defaultFallbackProducts = [
     image_link: "https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80",
     brand: "Asri Footwear",
     product_type: "Shoes",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
   },
   {
     id: "SHO-002",
@@ -91,6 +101,8 @@ const defaultFallbackProducts = [
     image_link: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80",
     brand: "Asri Sport",
     product_type: "Shoes",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
   },
   {
     id: "BAG-001",
@@ -104,6 +116,8 @@ const defaultFallbackProducts = [
     image_link: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80",
     brand: "Asri Bags",
     product_type: "Accessories",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
   },
   {
     id: "BAG-002",
@@ -117,6 +131,8 @@ const defaultFallbackProducts = [
     image_link: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80",
     brand: "Asri Bags",
     product_type: "Accessories",
+    created_at: "2026-10-09T19:21:07.237165+00:00",
+    updated_at: "2026-10-09T19:21:07.237165+00:00",
   },
 ];
 
@@ -140,6 +156,7 @@ serve(async (req: Request) => {
       const supabase = createClient(SUPABASE_URL, apiKey);
       const url = new URL(req.url);
 
+      const id = url.searchParams.get("id");
       const category = url.searchParams.get("category") || url.searchParams.get("type");
       const availability = url.searchParams.get("availability");
       const search = url.searchParams.get("search");
@@ -147,6 +164,10 @@ serve(async (req: Request) => {
       const limit = parseInt(url.searchParams.get("limit") || "100", 10);
 
       let query = supabase.from("products").select("*");
+
+      if (id) {
+        query = query.eq("id", id);
+      }
 
       if (category && category !== "all") {
         query = query.ilike("product_type", `%${category}%`);
@@ -158,7 +179,7 @@ serve(async (req: Request) => {
 
       if (search && search.trim()) {
         const term = search.trim();
-        query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%,brand.ilike.%${term}%`);
+        query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%,brand.ilike.%${term}%,id.ilike.%${term}%`);
       }
 
       if (sort === "price_asc") {
@@ -176,12 +197,24 @@ serve(async (req: Request) => {
       if (!error && data && data.length > 0) {
         products = data;
       } else {
-        // Fallback jika tabel masih kosong
-        products = defaultFallbackProducts;
+        // Fallback jika query kosong atau tabel belum ada data
+        if (id) {
+          const matched = defaultFallbackProducts.filter((p) => p.id === id);
+          products = matched.length > 0 ? matched : defaultFallbackProducts;
+        } else {
+          products = defaultFallbackProducts;
+        }
       }
     } else {
       // Fallback lokal mode
-      products = defaultFallbackProducts;
+      const url = new URL(req.url);
+      const id = url.searchParams.get("id");
+      if (id) {
+        const matched = defaultFallbackProducts.filter((p) => p.id === id);
+        products = matched.length > 0 ? matched : defaultFallbackProducts;
+      } else {
+        products = defaultFallbackProducts;
+      }
     }
 
     // Standardisasi & sanitasi data produk sesuai format Duitku POP itemDetails
@@ -204,6 +237,8 @@ serve(async (req: Request) => {
         brand: p.brand || "Asri Collection",
         product_type: p.product_type || "General",
         display_image: p.image_link,
+        created_at: p.created_at || new Date().toISOString(),
+        updated_at: p.updated_at || new Date().toISOString(),
       };
     });
 

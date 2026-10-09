@@ -4,20 +4,18 @@ import {
   User,
   ShieldCheck,
   CreditCard,
-  Lock,
   Phone,
   ChevronRight,
-  ExternalLink,
+  FileText,
+  HelpCircle,
 } from 'lucide-react';
 import { StoreFooter } from '../components/StoreFooter';
 
 interface AccountPageProps {
-  onSwitchToAdmin?: () => void;
   onGoToOrders?: () => void;
 }
 
 export const AccountPage: React.FC<AccountPageProps> = ({
-  onSwitchToAdmin,
   onGoToOrders,
 }) => {
   const navigate = useNavigate();
@@ -52,7 +50,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           </div>
         </div>
 
-        {/* Quick Menu List */}
+        {/* Quick Menu List (Khusus Pelanggan / Publik) */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-xs divide-y divide-gray-100 overflow-hidden">
           <button
             onClick={() => {
@@ -74,24 +72,35 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           </button>
 
           <button
-            onClick={() => {
-              if (onSwitchToAdmin) onSwitchToAdmin();
-              else navigate('/admin');
-            }}
+            onClick={() => navigate('/contact')}
             className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
           >
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <Lock className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <HelpCircle className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-xs font-bold text-gray-900">Masuk Panel Admin Toko</p>
-                <p className="text-[10px] text-gray-500">Kelola resi, order, dan Duitku sandbox</p>
+                <p className="text-xs font-bold text-gray-900">Pusat Bantuan &amp; Kontak</p>
+                <p className="text-[10px] text-gray-500">Layanan CS resmi dan WhatsApp</p>
               </div>
             </div>
-            <span className="text-[10px] font-bold text-[#2563EB] bg-blue-50 px-2 py-0.5 rounded-full">
-              PIN: 123456
-            </span>
+            <ChevronRight className="w-4 h-4 text-gray-400" />
+          </button>
+
+          <button
+            onClick={() => navigate('/terms')}
+            className="w-full p-3.5 flex items-center justify-between text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-900">Syarat &amp; Ketentuan</p>
+                <p className="text-[10px] text-gray-500">Faktur transaksi dan standar pembayaran</p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-400" />
           </button>
         </div>
 

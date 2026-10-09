@@ -122,19 +122,6 @@ const curatedImageMap: Record<string, string> = {
 
 const defaultProductsList = [
   {
-    id: 'APP-003',
-    title: 'Hoodie Fleece Unisex',
-    description: 'Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.',
-    availability: 'in stock',
-    condition: 'new',
-    price: 275000,
-    sale_price: null,
-    currency: 'IDR',
-    image_link: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80',
-    brand: 'Asri Wear',
-    product_type: 'Apparel',
-  },
-  {
     id: 'APP-001-BLK-M',
     title: 'Kaos Katun Premium Hitam',
     description: 'Kaos katun combed 30s premium dengan jahitan rapi dan adem sepanjang hari.',
@@ -146,6 +133,9 @@ const defaultProductsList = [
     image_link: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80',
     brand: 'Asri Basic',
     product_type: 'Apparel',
+    display_image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
   },
   {
     id: 'APP-001-WHT-L',
@@ -159,6 +149,9 @@ const defaultProductsList = [
     image_link: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80',
     brand: 'Asri Basic',
     product_type: 'Apparel',
+    display_image: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
   },
   {
     id: 'APP-002',
@@ -172,6 +165,25 @@ const defaultProductsList = [
     image_link: 'https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80',
     brand: 'Asri Casual',
     product_type: 'Apparel',
+    display_image: 'https://images.unsplash.com/photo-1598554747436-c9293d6a588f?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
+  },
+  {
+    id: 'APP-003',
+    title: 'Hoodie Fleece Unisex',
+    description: 'Hoodie berbahan fleece lembut dan hangat, cocok untuk cuaca sejuk atau harian santai.',
+    availability: 'in stock',
+    condition: 'new',
+    price: 275000,
+    sale_price: null,
+    currency: 'IDR',
+    image_link: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80',
+    brand: 'Asri Wear',
+    product_type: 'Apparel',
+    display_image: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
   },
   {
     id: 'SHO-001',
@@ -185,6 +197,9 @@ const defaultProductsList = [
     image_link: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80',
     brand: 'Asri Footwear',
     product_type: 'Shoes',
+    display_image: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
   },
   {
     id: 'SHO-002',
@@ -198,6 +213,9 @@ const defaultProductsList = [
     image_link: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
     brand: 'Asri Sport',
     product_type: 'Shoes',
+    display_image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
   },
   {
     id: 'BAG-001',
@@ -211,6 +229,9 @@ const defaultProductsList = [
     image_link: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80',
     brand: 'Asri Bags',
     product_type: 'Accessories',
+    display_image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
   },
   {
     id: 'BAG-002',
@@ -224,6 +245,9 @@ const defaultProductsList = [
     image_link: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80',
     brand: 'Asri Bags',
     product_type: 'Accessories',
+    display_image: 'https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=600&auto=format&fit=crop&q=80',
+    created_at: '2026-10-09T19:21:07.237165+00:00',
+    updated_at: '2026-10-09T19:21:07.237165+00:00',
   },
 ];
 
