@@ -1,4 +1,84 @@
-# Duitku Integration — Source of Truth
+# Asri Collection — Source of Truth
+
+Dokumen ini menetapkan hierarki sumber kebenaran untuk repository `asricollectionapps`, backend Supabase, dan integrasi pembayaran Duitku. Dokumen ini membedakan kontrak resmi, keputusan proyek, dan kondisi aktual yang teramati. Keberadaan komponen tidak otomatis berarti implementasi aman, benar, atau telah lulus audit.
+
+## 0. Lingkup dan aturan otoritas
+
+### Hierarki sumber
+
+1. **Kontrak provider pembayaran:** dokumentasi resmi Duitku POP untuk implementasi POP. Gunakan dokumentasi API V2 hanya jika keputusan integrasi memang menggunakan produk API V2. Jangan mencampur kontrak POP dan V2.
+2. **Kontrak platform/backend:** dokumentasi resmi Supabase untuk perilaku Database/Postgres, Row Level Security (RLS), Edge Functions, Auth, Storage, secrets, dan deployment.
+3. **Keputusan proyek:** requirement yang telah disetujui dan dokumen proyek di repository. Keputusan proyek tidak boleh mengubah atau mengesampingkan kontrak resmi provider/platform.
+4. **Kondisi implementasi:** kode pada branch/commit GitHub yang diperiksa dan konfigurasi/schema Supabase yang dibaca secara langsung. Ini membuktikan keadaan yang teramati, bukan bahwa keadaan tersebut sesuai requirement.
+5. **Demo, contoh, dan asumsi:** digunakan sebagai bahan uji atau petunjuk, bukan sebagai pengganti kontrak resmi maupun bukti implementasi.
+
+### Aturan perubahan
+
+- Untuk audit, prioritaskan bukti aktual dari repository dan Supabase; sertakan path, objek, environment, dan waktu pemeriksaan jika tersedia.
+- Pisahkan **persyaratan resmi**, **requirement proyek yang disetujui**, **rekomendasi engineering**, dan **temuan aktual**.
+- Jika bukti tidak cukup, tandai **belum diverifikasi**; jangan menebak atau menyatakan lulus.
+- Perubahan kode, schema/database, secrets, konfigurasi, atau deployment memerlukan otorisasi eksplisit. Audit read-only tidak boleh melakukan perubahan.
+- Jangan mencatat nilai secret, API key, access token, atau data pribadi di dokumen.
+- GitHub dan Supabase adalah sumber kebenaran untuk hal yang berbeda: GitHub untuk versi kode/dokumen yang tercatat; Supabase untuk schema, data, fungsi yang ter-deploy, dan konfigurasi aktual. Jangan menganggap keduanya sinkron tanpa verifikasi.
+
+## 0.1 Repository aplikasi
+
+- Repository: [alfazarqom04122005-commits/asricollectionapps](https://github.com/alfazarqom04122005-commits/asricollectionapps)
+- Branch yang diperiksa: `main` (default branch yang dilaporkan GitHub).
+- [Dokumentasi Duitku](./dokumentasi-duitku.md) adalah ringkasan referensi integrasi; dokumentasi resmi Duitku tetap menjadi otoritas untuk kontrak provider.
+- Commit pada repository membuktikan perubahan file di GitHub, bukan bahwa perubahan telah di-deploy ke Supabase.
+
+## 0.2 Supabase backend
+
+- Project reference: `mvwflakurihhakdrlteg`.
+- Backend yang menjadi objek pemeriksaan: Supabase Database dan Edge Functions.
+- Gunakan schema dan source function yang benar-benar dibaca dari project untuk menggambarkan kondisi saat ini. Jangan menganggap migration lokal, dokumen, atau kode GitHub sebagai bukti schema/function production yang aktif.
+
+### Snapshot read-only yang teramati pada 15 Oktober 2026
+
+Daftar berikut berasal dari pembacaan tool Supabase pada sesi ini; ini adalah snapshot observasi, bukan pernyataan bahwa implementasi sudah lulus audit.
+
+**Tabel pada schema `public` yang teramati:**
+
+- `products`
+- `orders`
+- `order_items`
+- `payments`
+- `inventory_reservations`
+- `admin_users`
+- `audit_logs`
+- `callback_events`
+
+Tool melaporkan RLS aktif pada tabel-tabel tersebut. Status RLS aktif **tidak membuktikan** bahwa policy, grants, atau akses setiap role sudah aman; policy dan hak akses perlu diaudit secara terpisah.
+
+**Edge Functions aktif yang teramati:**
+
+- `get-products`
+- `create-order`
+- `duitku-callback`
+- `get-order-tracking`
+- `duitku-create-invoice`
+- `get-duitku-payment-status`
+- `product-crud`
+- `ws-crud`
+
+Tool melaporkan `verify_jwt=false` pada daftar fungsi tersebut. Nilai ini hanya observasi konfigurasi deployment; untuk callback provider atau endpoint publik, autentikasi/validasi harus dinilai berdasarkan isi fungsi dan mekanisme pengamanan yang benar-benar diterapkan. Jangan mengubah pengaturan tanpa audit dan persetujuan.
+
+**Batas snapshot:** daftar di atas tidak memvalidasi seluruh isi fungsi, signature callback, idempotensi, policies/grants, secrets, frontend callers, ataupun kesesuaian schema dengan requirement. Verifikasi kembali sebelum mengambil keputusan implementasi.
+
+## 0.3 Kontrak pembayaran Asri Collection
+
+- Produk yang dituju dalam dokumentasi proyek: **Duitku POP**.
+- Rujukan teknis utama: [Duitku POP Indonesia](https://docs.duitku.com/pop/id/).
+- [FAQ resmi Duitku](https://www.duitku.com/frequently-asked-questions/) digunakan untuk persyaratan website/aplikasi merchant, dengan batas klaim sesuai teks FAQ yang berlaku.
+- Sandbox/demo hanya untuk pengujian; bukan bukti aktivasi merchant atau kesiapan production.
+- Backend harus memvalidasi transaksi dan nominal; browser redirect/event JavaScript tidak boleh menjadi bukti final pembayaran.
+- Formula signature, field, header, callback, dan endpoint wajib diperiksa pada dokumentasi POP terkini. Jangan memakai implementasi signature legacy atau kontrak API V2 tanpa dasar dokumentasi yang sesuai.
+- Status pembayaran, efek stok, dan pemrosesan callback harus diverifikasi terhadap requirement aplikasi serta kontrak provider. Jangan menyimpulkan aman hanya dari nama tabel/fungsi.
+
+---
+
+## 1. Referensi Duitku
 
 Dokumen ini menetapkan sumber rujukan untuk analisis, requirement, implementasi, pengujian, dan verifikasi integrasi Duitku pada Asri Collection. Dokumentasi resmi Duitku menjadi acuan utama untuk kontrak teknis. Demo sandbox hanya digunakan untuk eksplorasi dan pengujian, bukan sebagai pengganti kontrak resmi.
 
