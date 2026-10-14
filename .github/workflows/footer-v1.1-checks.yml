@@ -19,14 +19,14 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
       - name: TypeScript check
         run: npm run lint
       - name: Production build
         run: npm run build
       - name: Install browser test runtime
         run: |
-          npm install --no-save playwright
+          npm install --no-save --legacy-peer-deps playwright
           npx playwright install --with-deps chromium
       - name: Start production preview
         run: |
