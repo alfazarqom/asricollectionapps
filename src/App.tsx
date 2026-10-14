@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MobileContainer } from './components/MobileContainer';
+import { StoreFooter } from './components/StoreFooter';
 import { BottomNav, TabType } from './components/BottomNav';
 import { CartProvider, useCart } from './context/CartContext';
 import { Product } from './types';
@@ -102,6 +103,8 @@ export function AppContent() {
   };
 
   // Tentukan rute di mana BottomNav ditampilkan
+  const showFooterAtAppLevel = ['/cart', '/checkout', '/admin'].includes(location.pathname);
+
   const showBottomNav = [
     '/',
     '/categories',
@@ -217,6 +220,7 @@ export function AppContent() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
+      {showFooterAtAppLevel && <StoreFooter />}
       {showBottomNav && <BottomNav />
     </MobileContainer>
   );
