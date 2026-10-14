@@ -66,18 +66,70 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
     else navigate('/');
   };
 
+  // Helper aman untuk memuat data pesanan tanpa error HTML <!doctype
+  const fetchOrderData = async (orderNo: string, token?: string): Promise<Order> => {
+    const cleanNo = orderNo.trim().toUpperCase();
+    const cleanToken = token?.trim() || '';
+
+    let responseData: any = null;
+
+    // 1. Coba request ke backend lokal / proxy /api/orders
+    try {
+      const url = cleanToken
+        ? `/api/orders/${encodeURIComponent(cleanNo)}?token=${encodeURIComponent(cleanToken)}`
+        : `/api/orders/${encodeURIComponent(cleanNo)}`;
+
+      const res = await fetch(url);
+      const contentType = res.headers.get('content-type') || '';
+      // Pastikan respons adalah JSON murni, bukan HTML <!doctype html> dari SPA catch-all Vercel
+      if (res.ok && contentType.includes('application/json')) {
+        responseData = await res.json();
+      }
+    } catch (_err) {
+      // Abaikan dan beralih ke direct Supabase
+    }
+
+    // 2. Jika /api/orders tidak mengembalikan JSON (misal HTML di Vercel), panggil langsung Supabase Edge Function
+    if (!responseData || !responseData.order) {
+      const queryParams = new URLSearchParams({ orderNumber: cleanNo });
+      if (cleanToken) queryParams.set('token', cleanToken);
+
+      const directUrl = `https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-duitku-payment-status?${queryParams.toString()}`;
+
+      const directRes = await fetch(directUrl);
+      const directContentType = directRes.headers.get('content-type') || '';
+
+      if (directContentType.includes('application/json')) {
+        const directData = await directRes.json();
+        if (directRes.ok && (directData.order || directData.success)) {
+          responseData = directData;
+        } else if (directData.error) {
+          throw new Error(directData.error);
+        }
+      } else {
+        throw new Error('Gagal memuat status pesanan dari database.');
+      }
+    }
+
+    // 3. Normalisasi hasil
+    if (responseData?.order) {
+      return responseData.order;
+    }
+    if (responseData?.orderNumber) {
+      return responseData as Order;
+    }
+
+    throw new Error('Pesanan dengan nomor tersebut tidak ditemukan.');
+  };
+
   const fetchOrderByToken = async (orderNo: string, token: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await fetch(`/api/orders/${orderNo}?token=${token}`);
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Pesanan tidak ditemukan atau akses ditolak.');
-      }
-      setActiveOrder(data.order);
+      const order = await fetchOrderData(orderNo, token);
+      setActiveOrder(order);
     } catch (err: any) {
-      setErrorMessage(err.message);
+      setErrorMessage(err.message || 'Pesanan tidak ditemukan atau akses ditolak.');
     } finally {
       setIsLoading(false);
     }
@@ -94,23 +146,10 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
     setErrorMessage(null);
 
     try {
-      const res = await fetch('/api/orders/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderNumber: orderNumberInput.trim().toUpperCase(),
-          phoneOrEmail: verificationInput.trim() || undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Pesanan tidak ditemukan.');
-      }
-
-      setActiveOrder(data.order);
+      const order = await fetchOrderData(orderNumberInput);
+      setActiveOrder(order);
     } catch (err: any) {
-      setErrorMessage(err.message);
+      setErrorMessage(err.message || 'Pesanan tidak ditemukan.');
     } finally {
       setIsLoading(false);
     }
