@@ -342,6 +342,92 @@ Catat hasil pemeriksaan dalam format berikut ketika audit dilakukan. Kolom statu
 
 ---
 
+
+---
+
+# BAGIAN E — HASIL AUDIT WEBSITE (15 Oktober 2026)
+
+**Target:** https://asricollection.online  
+**Metode:** pemeriksaan URL langsung melalui alat penelusuran serta pencarian web atas domain dan halaman kebijakan.  
+**Batasan penting:** URL langsung gagal dimuat dalam sesi audit (alat mengembalikan *Failed to fetch / DisabledError*). Hasil pencarian pihak ketiga ScamAdviser yang terindeks sekitar 5 hari lalu menyebut judul website **“Parked Domain name on Hostinger DNS system”**, target DNS parking `artemis.dns-parking.com`, HTTP status 200, dan sertifikat SSL valid. Bukti ini mendukung kesimpulan bahwa domain tampak mengarah ke halaman parkir, bukan membuktikan halaman toko aktif. Sumber: https://www.scamadviser.com/check-website/asricollection.online  
+**Interpretasi status:** “Gagal” hanya digunakan ketika ada bukti yang menunjukkan kriteria tidak terpenuhi; “Belum diverifikasi” berarti bukti yang tersedia tidak cukup. “Lulus” tidak diberikan hanya karena tidak ditemukan masalah.
+
+## E1. Ringkasan
+
+- **Gagal:** website aktif dan menampilkan toko publik yang dapat diaudit — bukti saat ini menunjukkan domain parkir.
+- **Belum diverifikasi:** semua butir lain, termasuk isi halaman, identitas/kontak, produk, legalitas, integrasi pembayaran, pengujian sandbox, konfigurasi akun merchant, dan persetujuan produksi.
+- **Lulus:** belum ada kriteria yang dapat dinyatakan lulus berdasarkan bukti yang berhasil diperiksa.
+
+Kesimpulan sementara: **website belum siap dinyatakan memenuhi checklist Duitku.** Ini bukan keputusan kelayakan merchant oleh Duitku dan bukan bukti bahwa akun merchant ditolak.
+
+## E2. D1 — Persyaratan resmi untuk diverifikasi
+
+| Kriteria | Status | Bukti / alasan |
+|---|---|---|
+| Website memenuhi persyaratan pendaftaran Duitku | **Gagal** | Domain terindeks sebagai halaman parkir Hostinger, bukan toko aktif yang dapat diperiksa. |
+| Informasi bisnis dan kontak tersedia | **Belum diverifikasi** | Halaman toko tidak berhasil dimuat; informasi bisnis/kontak tidak dapat diperiksa langsung. |
+| Produk sesuai izin usaha dan bukan kategori yang ditolak | **Belum diverifikasi** | Katalog dan dokumen legalitas tidak tersedia sebagai bukti yang dapat diperiksa. |
+| Dokumen merchant sesuai instruksi Duitku | **Belum diverifikasi** | Tidak ada akses ke dashboard/dokumen akun merchant. |
+| Lingkungan dan kredensial sesuai | **Belum diverifikasi** | Secret, environment, dan konfigurasi akun tidak dapat diperiksa dari website publik. |
+| Create Invoice mengikuti dokumentasi resmi | **Belum diverifikasi** | Tidak ada transaksi uji atau bukti request/response yang dapat diverifikasi. |
+| Signature request mengikuti formula yang berlaku | **Belum diverifikasi** | Kode aktif dan hasil pengujian signature tidak berhasil diverifikasi dalam audit website ini. |
+| Callback divalidasi sesuai dokumentasi | **Belum diverifikasi** | Tidak ada payload callback dan bukti hasil validasi dari pengujian terkini. |
+| Redirect/JavaScript tidak dijadikan bukti pembayaran | **Belum diverifikasi** | Alur frontend/backend aktif tidak dapat diuji. |
+| Nominal dan identitas transaksi sesuai ketentuan API | **Belum diverifikasi** | Checkout dan hasil Create Invoice tidak dapat diuji. |
+| Prosedur refund mengikuti ketentuan merchant | **Belum diverifikasi** | Kebijakan yang dipublikasikan dan konfigurasi/prosedur aktual tidak dapat diperiksa. |
+
+## E3. D2 — Rekomendasi implementasi
+
+| Kriteria | Status | Bukti / alasan |
+|---|---|---|
+| HTTPS diterapkan | **Belum diverifikasi** | ScamAdviser melaporkan sertifikat SSL valid, tetapi akses langsung gagal; penerapan HTTPS pada toko aktif belum dapat diuji menyeluruh. |
+| Informasi produk dan harga jelas | **Belum diverifikasi** | Katalog tidak dapat diperiksa. |
+| Kebijakan privasi sesuai praktik pemrosesan data | **Belum diverifikasi** | Halaman dan praktik aktual tidak dapat diperiksa. |
+| Syarat dan ketentuan tersedia | **Belum diverifikasi** | Halaman tidak dapat ditemukan/diverifikasi dari bukti audit yang tersedia. |
+| Informasi pengiriman tersedia | **Belum diverifikasi** | Halaman tidak dapat ditemukan/diverifikasi dari bukti audit yang tersedia. |
+| Kebijakan pembatalan/refund tersedia | **Belum diverifikasi** | Halaman tidak dapat ditemukan/diverifikasi dari bukti audit yang tersedia. |
+| API Key disimpan di backend | **Belum diverifikasi** | Tidak dapat ditentukan dari pemeriksaan halaman publik. |
+| Total dihitung ulang di backend | **Belum diverifikasi** | Checkout/backend tidak dapat diuji dalam audit ini. |
+| Callback handler idempoten | **Belum diverifikasi** | Pengujian callback berulang tidak tersedia. |
+| Status pembayaran dan stok konsisten | **Belum diverifikasi** | Tidak ada pengujian transaksi dan stok yang dapat diverifikasi. |
+| Pengujian sandbox selesai | **Belum diverifikasi** | Tidak ada laporan uji sandbox terkini yang disertakan sebagai bukti audit ini. |
+| Logging dan rekonsiliasi tersedia | **Belum diverifikasi** | Log dan proses rekonsiliasi tidak dapat diperiksa dari website publik. |
+
+## E4. D3 — Kesiapan website merchant
+
+| Kriteria | Status | Bukti / alasan |
+|---|---|---|
+| Website dapat diakses publik dan aktif | **Gagal** | URL langsung gagal dimuat dalam sesi audit; sumber pihak ketiga menandai domain sebagai halaman parkir Hostinger. |
+| Bukan sekadar tautan marketplace/media sosial atau subdomain platform pembuat website | **Belum diverifikasi** | Domainnya adalah domain khusus, tetapi situs toko aktif yang harus dinilai belum berhasil dimuat; kriteria ini belum dapat dinyatakan lulus. |
+| Identitas bisnis dan produk/jasa dijelaskan jelas | **Belum diverifikasi** | Konten bisnis/katalog tidak dapat diperiksa. |
+| Telepon, alamat, dan email tersedia serta aktif | **Belum diverifikasi** | Tidak ada halaman kontak yang berhasil diverifikasi; keberfungsian kontak juga belum diuji. |
+| Produk sesuai izin usaha dan bukan kategori terlarang | **Belum diverifikasi** | Produk dan dokumen izin usaha belum dapat diperiksa. |
+| Harga, cara pembelian, pengiriman, dan dukungan dijelaskan akurat | **Belum diverifikasi** | Halaman toko/checkout/kebijakan tidak dapat diperiksa. |
+| Syarat dan ketentuan, privasi, pengiriman, pembatalan/refund ditinjau | **Belum diverifikasi** | Keberadaan dan isi halaman belum berhasil diverifikasi. |
+| Dokumen legalitas dan persyaratan merchant sesuai instruksi Duitku | **Belum diverifikasi** | Dokumen dan dashboard merchant tidak tersedia untuk pemeriksaan. |
+
+## E5. D4 — Konfirmasi sebelum produksi
+
+| Kriteria | Status | Bukti / alasan |
+|---|---|---|
+| Hal yang belum jelas telah dikonfirmasi ke Duitku | **Belum diverifikasi** | Tidak ada bukti komunikasi/konfirmasi tertulis yang diperiksa. |
+| Kanal pembayaran yang diperlukan telah aktif | **Belum diverifikasi** | Memerlukan bukti dari dashboard atau konfirmasi Duitku. |
+| Persyaratan aktivasi produksi telah dipenuhi | **Belum diverifikasi** | Status aktivasi akun tidak dapat dilihat dari website publik. |
+| Kredensial sandbox dan produksi dipisahkan | **Belum diverifikasi** | Konfigurasi secret/environment tidak diperiksa. |
+| Create Invoice, signature, callback, nominal, status, callback berulang telah diuji | **Belum diverifikasi** | Tidak ada laporan pengujian lengkap yang dapat diverifikasi dalam audit ini. |
+| Pengujian akhir selesai sebelum transaksi nyata | **Belum diverifikasi** | Bukti uji end-to-end tidak tersedia. |
+
+## E6. Catatan tindak lanjut dan bukti yang dibutuhkan
+
+1. Pulihkan/publikasikan website toko di domain utama dan pastikan domain tidak lagi menampilkan halaman parkir.
+2. Setelah situs aktif, periksa ulang URL langsung dan catat URL halaman beranda, katalog/detail produk, kontak, syarat dan ketentuan, privasi, pengiriman, serta pembatalan/refund.
+3. Uji kontak yang dipublikasikan; verifikasi identitas bisnis, alamat, email, telepon, dan dokumen legalitas secara terpisah.
+4. Audit kode dan konfigurasi backend/Edge Functions secara terpisah. Jangan menempelkan API Key atau secret ke laporan; gunakan bukti yang telah disanitasi.
+5. Jalankan pengujian sandbox end-to-end, termasuk signature valid/tidak valid, nominal tidak cocok, callback duplikat, transaksi gagal/kedaluwarsa, dan konsistensi status pesanan/stok.
+6. Konfirmasi kanal dan persetujuan produksi melalui dashboard atau komunikasi resmi Duitku.
+
+**Batas kesimpulan:** audit ini hanya menetapkan status berdasarkan bukti publik yang ditemukan. Audit ini tidak mengubah website, repository aplikasi, database, Edge Functions, atau akun Duitku; tidak melakukan transaksi nyata; dan tidak menyatakan merchant telah disetujui atau ditolak oleh Duitku.
+
 # Referensi
 
 1. Duitku FAQ — https://www.duitku.com/frequently-asked-questions/
