@@ -1,208 +1,276 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const BUCKET = "ws";
-const MAX_BYTES = 5 * 1024 * 1024;
-const TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_GALLERY = 10;
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type, x-product-crud-token, apikey, x-client-info",
+  "Access-Control-Allow-Headers": "content-type, apikey, x-client-info",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
 };
-const fields = ["title", "description", "availability", "condition", "price", "sale_price", "currency", "image_link", "brand", "product_type"] as const;
 
-function response(body: unknown, status = 200, headers: Record<string, string> = {}) {
-  return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers } });
+type JsonRecord = Record<string, unknown>;
+const PRODUCT_FIELDS = new Set([
+  "title", "description", "availability", "condition", "price", "sale_price",
+  "currency", "image_link", "additional_image_link", "brand", "product_type",
+]);
+
+function reply(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+  });
 }
-function record(v: unknown): v is Record<string, unknown> { return v !== null && typeof v === "object" && !Array.isArray(v); }
-function equalSecret(a: string, b: string) {
-  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
-  return diff === 0;
+function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-function validate(raw: unknown, partial: boolean, hasImage: boolean) {
-  if (!record(raw)) return { error: "Product data must be a JSON object" };
-  const allowed = new Set(["id", ...fields]);
-  const unknown = Object.keys(raw).filter(k => !allowed.has(k));
-  if (unknown.length) return { error: `Unsupported field(s): ${unknown.join(", ")}` };
-  const value: Record<string, unknown> = {};
-  for (const [key, v] of Object.entries(raw)) {
+function getStoragePath(value: unknown, supabaseUrl: string): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value);
+    if (url.origin !== new URL(supabaseUrl).origin) return null;
+    const marker = "/storage/v1/object/public/" + BUCKET + "/";
+    const index = url.pathname.indexOf(marker);
+    if (index < 0) return null;
+    const path = decodeURIComponent(url.pathname.slice(index + marker.length));
+    const parts = path.split("/");
+    if (!path.startsWith("products/") || parts.some(part => !part || part === "." || part === "..")) return null;
+    return path;
+  } catch {
+    return null;
+  }
+}
+function validateProduct(raw: unknown, partial: boolean, supabaseUrl: string) {
+  if (!isRecord(raw)) return { error: "Request body must be a JSON object" };
+  const allowed = new Set(["id", ...PRODUCT_FIELDS]);
+  const unknown = Object.keys(raw).filter(key => !allowed.has(key));
+  if (unknown.length) return { error: "Unsupported field(s): " + unknown.join(", ") };
+
+  const value: JsonRecord = {};
+  for (const [key, item] of Object.entries(raw)) {
     if (key === "id") {
-      if (typeof v !== "string" || !v.trim() || v.trim().length > 200) return { error: "id must be a non-empty string of at most 200 characters" };
-      value.id = v.trim(); continue;
+      if (typeof item !== "string" || !item.trim() || item.trim().length > 200) {
+        return { error: "id must be a non-empty string of at most 200 characters" };
+      }
+      value.id = item.trim();
+      continue;
     }
-    if (["title", "image_link", "condition", "currency", "availability", "brand", "product_type"].includes(key)) {
-      if (v === null && ["brand", "product_type"].includes(key)) { value[key] = null; continue; }
-      if (typeof v !== "string") return { error: `${key} must be a string` };
+    if (key === "additional_image_link") {
+      if (!Array.isArray(item) || item.length > MAX_GALLERY) {
+        return { error: "additional_image_link must be an array containing at most " + MAX_GALLERY + " URLs" };
+      }
+      for (const imageUrl of item) {
+        if (typeof imageUrl !== "string" || !getStoragePath(imageUrl, supabaseUrl)) {
+          return { error: "Each additional_image_link item must be a public URL from bucket ws under products/" };
+        }
+      }
+      value[key] = item.map((url: string) => url.trim());
+      continue;
+    }
+    if (["title", "image_link", "availability", "condition", "currency", "brand", "product_type"].includes(key)) {
+      if (item === null && ["brand", "product_type"].includes(key)) {
+        value[key] = null;
+        continue;
+      }
+      if (typeof item !== "string") return { error: key + " must be a string" };
+      const trimmed = item.trim();
       const max = key === "title" ? 250 : key === "image_link" ? 2048 : 500;
-      if (v.length > max) return { error: `${key} exceeds ${max} characters` };
-      const s = v.trim();
-      if (["title", "condition", "currency", "availability"].includes(key) && !s) return { error: `${key} must not be empty` };
-      if (key === "image_link" && s && !/^https:\/\//i.test(s)) return { error: "image_link must be an HTTPS URL" };
-      if (key === "availability" && !["in stock", "out of stock", "preorder"].includes(s)) return { error: "Invalid availability value" };
-      value[key] = s; continue;
+      if (trimmed.length > max) return { error: key + " exceeds " + max + " characters" };
+      if (["title", "availability", "condition", "currency"].includes(key) && !trimmed) {
+        return { error: key + " must not be empty" };
+      }
+      if (key === "availability" && !["in stock", "out of stock", "preorder"].includes(trimmed)) {
+        return { error: "availability must be in stock, out of stock, or preorder" };
+      }
+      if (key === "image_link" && !getStoragePath(trimmed, supabaseUrl)) {
+        return { error: "image_link must be a public URL from bucket ws under products/" };
+      }
+      value[key] = trimmed;
+      continue;
     }
     if (key === "description") {
-      if (v !== null && typeof v !== "string") return { error: "description must be a string or null" };
-      if (typeof v === "string" && v.length > 10000) return { error: "description exceeds 10000 characters" };
-      value[key] = v; continue;
+      if (item !== null && typeof item !== "string") return { error: "description must be a string or null" };
+      if (typeof item === "string" && item.length > 10000) return { error: "description exceeds 10000 characters" };
+      value[key] = item;
+      continue;
     }
     if (key === "price" || key === "sale_price") {
-      if (v === null && key === "sale_price") { value[key] = null; continue; }
-      if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1_000_000_000_000) return { error: `${key} must be a non-negative finite number` };
-      value[key] = v;
+      if (item === null && key === "sale_price") {
+        value[key] = null;
+        continue;
+      }
+      if (typeof item !== "number" || !Number.isFinite(item) || item < 0 || item > 1_000_000_000_000) {
+        return { error: key + " must be a non-negative finite number" };
+      }
+      value[key] = item;
     }
   }
+
   if (!partial) {
-    for (const k of ["id", "title", "price"]) if (!(k in value)) return { error: `${k} is required` };
-    if (!hasImage && !value.image_link) return { error: "image_link or uploaded image is required" };
+    for (const required of ["id", "title", "price", "image_link"]) {
+      if (!(required in value)) return { error: required + " is required" };
+    }
+    if (!("additional_image_link" in value)) value.additional_image_link = [];
+  } else if (Object.keys(value).every(key => key === "id")) {
+    return { error: "Provide at least one product field to update" };
   }
-  if (partial && Object.keys(value).every(k => k === "id") && !hasImage) return { error: "Provide a product field or image to update" };
   return { value };
 }
-function imageType(bytes: Uint8Array): string | null {
-  if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return "image/jpeg";
-  if (bytes.length >= 8 && [137,80,78,71,13,10,26,10].every((n,i) => bytes[i] === n)) return "image/png";
-  if (bytes.length >= 12 && String.fromCharCode(...bytes.slice(0,4)) === "RIFF" && String.fromCharCode(...bytes.slice(8,12)) === "WEBP") return "image/webp";
-  return null;
+function uniqueStoragePaths(urls: unknown[], supabaseUrl: string): string[] {
+  return [...new Set(urls.map(url => getStoragePath(url, supabaseUrl)).filter((path): path is string => !!path))];
 }
-function ext(type: string) { return type === "image/jpeg" ? "jpg" : type === "image/png" ? "png" : "webp"; }
-function storagePath(url: unknown, base: string): string | null {
-  if (typeof url !== "string" || !url) return null;
-  try {
-    const u = new URL(url);
-    if (u.origin !== new URL(base).origin) return null;
-    const marker = `/storage/v1/object/public/${BUCKET}/`;
-    const i = u.pathname.indexOf(marker);
-    if (i < 0) return null;
-    const p = decodeURIComponent(u.pathname.slice(i + marker.length));
-    return p.startsWith("products/") ? p : null;
-  } catch { return null; }
-}
-async function parseRequest(req: Request) {
-  if (!(req.headers.get("content-type") ?? "").toLowerCase().includes("multipart/form-data")) {
-    try { return { body: await req.json(), image: null as File | null }; }
-    catch { return { error: "Invalid JSON body" }; }
+async function removeUnreferencedImages(
+  db: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  candidatePaths: string[],
+) {
+  if (!candidatePaths.length) return;
+  const { data, error } = await db.from("products").select("image_link, additional_image_link");
+  if (error) {
+    console.warn("product-crud image cleanup skipped: unable to check references", error.message);
+    return;
   }
-  let form: FormData;
-  try { form = await req.formData(); } catch { return { error: "Invalid multipart form data" }; }
-  const raw = form.get("product") ?? form.get("data");
-  if (typeof raw !== "string") return { error: 'Multipart request requires JSON field "product"' };
-  let body: unknown;
-  try { body = JSON.parse(raw); } catch { return { error: 'Field "product" must contain valid JSON' }; }
-  const file = form.get("image");
-  if (file !== null && !(file instanceof File)) return { error: '"image" must be a file' };
-  return { body, image: file instanceof File && file.size > 0 ? file : null };
+  const referenced = new Set<string>();
+  for (const product of data ?? []) {
+    const main = getStoragePath(product.image_link, supabaseUrl);
+    if (main) referenced.add(main);
+    const gallery = Array.isArray(product.additional_image_link) ? product.additional_image_link : [];
+    for (const imageUrl of gallery) {
+      const path = getStoragePath(imageUrl, supabaseUrl);
+      if (path) referenced.add(path);
+    }
+  }
+  const removable = [...new Set(candidatePaths)].filter(path => !referenced.has(path));
+  if (!removable.length) return;
+  const { error: removeError } = await db.storage.from(BUCKET).remove(removable);
+  if (removeError) {
+    // Intentionally log-only: V2 does not create a retry table or scheduled worker.
+    console.warn("product-crud image cleanup failed; manual cleanup may be required", {
+      bucket: BUCKET, paths: removable, message: removeError.message,
+    });
+  }
 }
 
-Deno.serve(async req => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  if (!["GET", "POST", "PATCH", "DELETE"].includes(req.method)) return response({ error: "Method not allowed" }, 405, { Allow: "GET, POST, PATCH, DELETE, OPTIONS" });
-  const base = Deno.env.get("SUPABASE_URL");
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? (() => { try { return JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}").default as string | undefined; } catch { return undefined; } })();
-  if (!base || !key) return response({ error: "Product service is not configured" }, 500);
-
-  if (req.method !== "GET") {
-    const expected = Deno.env.get("PRODUCT_CRUD_ADMIN_TOKEN");
-    if (!expected) return response({ error: "Product write operations are disabled until admin token is configured" }, 503);
-    if (!equalSecret(req.headers.get("x-product-crud-token") ?? "", expected)) return response({ error: "Forbidden" }, 403);
+  if (!["GET", "POST", "PATCH", "DELETE"].includes(req.method)) {
+    return reply({ error: "Method not allowed" }, 405);
   }
-  const db = createClient(base, key, { auth: { persistSession: false, autoRefreshToken: false } });
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+    (() => {
+      try { return JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}").default as string | undefined; }
+      catch { return undefined; }
+    })();
+  if (!supabaseUrl || !serviceKey) return reply({ error: "Product service is not configured" }, 500);
+
+  const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const url = new URL(req.url);
+  const route = url.pathname.replace(/\/+$/, "").split("/").pop() ?? "";
+
   try {
     if (req.method === "GET") {
-      const id = url.searchParams.get("id")?.trim();
-      const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
-      const category = (url.searchParams.get("category") ?? "").trim().slice(0, 100);
-      const availability = url.searchParams.get("availability");
-      const rawLimit = url.searchParams.get("limit");
-      const limit = rawLimit === null ? 100 : Number(rawLimit);
-      if (!Number.isInteger(limit) || limit < 1 || limit > 100) return response({ error: "limit must be an integer between 1 and 100" }, 400);
-      let q = db.from("products").select("*");
-      if (id) q = q.eq("id", id);
-      if (category && category.toLowerCase() !== "all") q = q.ilike("product_type", `%${category.replace(/[%_]/g, "")}%`);
-      if (availability) q = q.eq("availability", availability);
-      if (search) {
-        const s = search.replace(/[^\p{L}\p{N}\s.-]/gu, "");
-        if (s) q = q.or(`title.ilike.%${s}%,description.ilike.%${s}%,brand.ilike.%${s}%,id.ilike.%${s}%`);
-      }
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
-      if (error) { console.error("product-crud GET:", error.message); return response({ error: "Unable to retrieve products" }, 502); }
-      return response({ data: data ?? [], count: data?.length ?? 0 });
-    }
-
-    if (req.method === "POST" || req.method === "PATCH") {
-      const parsed = await parseRequest(req);
-      if ("error" in parsed) return response({ error: parsed.error }, 400);
-      const validated = validate(parsed.body, req.method === "PATCH", !!parsed.image);
-      if ("error" in validated) return response({ error: validated.error }, 400);
-      const value = validated.value!;
-      const id = req.method === "POST" ? String(value.id ?? "") : (url.searchParams.get("id")?.trim() || String(value.id ?? "").trim());
-      if (!id) return response({ error: "Product id is required in ?id= or product.id" }, 400);
-
-      let newPath: string | null = null;
-      if (parsed.image) {
-        if (parsed.image.size > MAX_BYTES) return response({ error: "Image exceeds the 5 MB limit" }, 413);
-        if (!TYPES.has(parsed.image.type)) return response({ error: "Only JPEG, PNG, and WebP images are allowed" }, 415);
-        const bytes = new Uint8Array(await parsed.image.arrayBuffer());
-        const detected = imageType(bytes);
-        if (!detected || detected !== parsed.image.type) return response({ error: "Image content does not match its declared MIME type" }, 415);
-        const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 160);
-        newPath = `products/${safeId}/${crypto.randomUUID()}.${ext(detected)}`;
-        const { error } = await db.storage.from(BUCKET).upload(newPath, bytes, { contentType: detected, cacheControl: "3600", upsert: false });
-        if (error) { console.error("product-crud upload:", error.message); return response({ error: "Unable to upload image to bucket ws" }, 502); }
-        value.image_link = db.storage.from(BUCKET).getPublicUrl(newPath).data.publicUrl;
-      }
-
-      if (req.method === "POST") {
-        const { data, error } = await db.from("products").insert(value).select("*").single();
+      if (route !== "ambil") return reply({ error: "Use GET /ambil" }, 404);
+      const id = url.searchParams.get("id");
+      if (id !== null && !id.trim()) return reply({ error: "id must not be empty" }, 400);
+      if (id !== null) {
+        const { data, error } = await db.from("products").select("*").eq("id", id.trim());
         if (error) {
-          if (newPath) await db.storage.from(BUCKET).remove([newPath]);
-          console.error("product-crud POST:", error.message);
-          return response({ error: error.code === "23505" ? "A product with this id already exists" : "Unable to create product" }, error.code === "23505" ? 409 : 400);
+          console.error("product-crud GET /ambil:", error.message);
+          return reply({ error: "Unable to retrieve products" }, 502);
         }
-        return response({ data }, 201);
+        return reply(data ?? []);
       }
-
-      const { data: before, error: lookupError } = await db.from("products").select("image_link").eq("id", id).maybeSingle();
-      if (lookupError || !before) {
-        if (newPath) await db.storage.from(BUCKET).remove([newPath]);
-        if (lookupError) console.error("product-crud PATCH lookup:", lookupError.message);
-        return response({ error: lookupError ? "Unable to update product" : "Product not found" }, lookupError ? 502 : 404);
-      }
-      const updates = { ...value }; delete updates.id;
-      const { data, error } = await db.from("products").update(updates).eq("id", id).select("*").maybeSingle();
-      if (error || !data) {
-        if (newPath) await db.storage.from(BUCKET).remove([newPath]);
-        if (error) console.error("product-crud PATCH:", error.message);
-        return response({ error: error ? "Unable to update product" : "Product not found" }, error ? 400 : 404);
-      }
-      if (newPath) {
-        const oldPath = storagePath(before.image_link, base);
-        if (oldPath && oldPath !== newPath) {
-          const { error: cleanupError } = await db.storage.from(BUCKET).remove([oldPath]);
-          if (cleanupError) console.warn("product-crud old image cleanup:", cleanupError.message);
+      const all: JsonRecord[] = [];
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await db.from("products").select("*")
+          .order("created_at", { ascending: false }).range(offset, offset + pageSize - 1);
+        if (error) {
+          console.error("product-crud GET /ambil:", error.message);
+          return reply({ error: "Unable to retrieve products" }, 502);
         }
+        all.push(...(data ?? []));
+        if (!data || data.length < pageSize) break;
       }
-      return response({ data });
+      return reply(all);
     }
 
-    const id = url.searchParams.get("id")?.trim();
-    if (!id) return response({ error: "id query parameter is required" }, 400);
-    const { data: existing, error: lookupError } = await db.from("products").select("image_link").eq("id", id).maybeSingle();
-    if (lookupError) return response({ error: "Unable to delete product" }, 400);
-    if (!existing) return response({ error: "Product not found" }, 404);
-    const { data, error } = await db.from("products").delete().eq("id", id).select("id").maybeSingle();
-    if (error) { console.error("product-crud DELETE:", error.message); return response({ error: "Unable to delete product" }, 400); }
-    if (!data) return response({ error: "Product not found" }, 404);
-    const oldPath = storagePath(existing.image_link, base);
-    if (oldPath) {
-      const { error: cleanupError } = await db.storage.from(BUCKET).remove([oldPath]);
-      if (cleanupError) console.warn("product-crud deleted product but image cleanup failed:", cleanupError.message);
+    if (req.method === "POST") {
+      if (route !== "tambah") return reply({ error: "Use POST /tambah" }, 404);
+      let raw: unknown;
+      try { raw = await req.json(); } catch { return reply({ error: "Invalid JSON body" }, 400); }
+      const checked = validateProduct(raw, false, supabaseUrl);
+      if ("error" in checked) return reply({ error: checked.error }, 400);
+      const { data, error } = await db.from("products").insert(checked.value).select("*").single();
+      if (error) {
+        console.error("product-crud POST /tambah:", error.message);
+        return reply({ error: error.code === "23505" ? "A product with this id already exists" : "Unable to create product" },
+          error.code === "23505" ? 409 : 400);
+      }
+      return reply(data, 201);
     }
-    return response({ deleted: true, id: data.id });
+
+    if (req.method === "PATCH") {
+      if (route !== "edit") return reply({ error: "Use PATCH /edit?id=..." }, 404);
+      const queryId = url.searchParams.get("id")?.trim();
+      if (!queryId) return reply({ error: "id query parameter is required" }, 400);
+      let raw: unknown;
+      try { raw = await req.json(); } catch { return reply({ error: "Invalid JSON body" }, 400); }
+      if (isRecord(raw) && typeof raw.id === "string" && raw.id.trim() !== queryId) {
+        return reply({ error: "Body id must match the id query parameter" }, 400);
+      }
+      const checked = validateProduct(raw, true, supabaseUrl);
+      if ("error" in checked) return reply({ error: checked.error }, 400);
+      const updates = { ...checked.value };
+      delete updates.id;
+
+      const { data: before, error: lookupError } = await db.from("products").select("*").eq("id", queryId).maybeSingle();
+      if (lookupError) {
+        console.error("product-crud PATCH lookup:", lookupError.message);
+        return reply({ error: "Unable to find product to update" }, 502);
+      }
+      if (!before) return reply({ error: "Product not found" }, 404);
+
+      const { data, error } = await db.from("products").update(updates).eq("id", queryId).select("*").maybeSingle();
+      if (error) {
+        console.error("product-crud PATCH /edit:", error.message);
+        return reply({ error: "Unable to update product" }, 400);
+      }
+      if (!data) return reply({ error: "Product not found" }, 404);
+
+      const oldUrls = [before.image_link, ...(Array.isArray(before.additional_image_link) ? before.additional_image_link : [])];
+      const newUrls = new Set([data.image_link, ...(Array.isArray(data.additional_image_link) ? data.additional_image_link : [])]);
+      const cleanup = uniqueStoragePaths(oldUrls.filter((imageUrl: unknown) => !newUrls.has(imageUrl)), supabaseUrl);
+      await removeUnreferencedImages(db, supabaseUrl, cleanup);
+      return reply(data);
+    }
+
+    if (req.method === "DELETE") {
+      if (route !== "hapus") return reply({ error: "Use DELETE /hapus?id=..." }, 404);
+      const id = url.searchParams.get("id")?.trim();
+      if (!id) return reply({ error: "id query parameter is required" }, 400);
+      const { data: existing, error: lookupError } = await db.from("products").select("*").eq("id", id).maybeSingle();
+      if (lookupError) {
+        console.error("product-crud DELETE lookup:", lookupError.message);
+        return reply({ error: "Unable to find product to delete" }, 502);
+      }
+      if (!existing) return reply({ error: "Product not found" }, 404);
+      const { data, error } = await db.from("products").delete().eq("id", id).select("id").maybeSingle();
+      if (error) {
+        console.error("product-crud DELETE /hapus:", error.message);
+        return reply({ error: "Unable to delete product" }, 400);
+      }
+      if (!data) return reply({ error: "Product not found" }, 404);
+
+      const imageUrls = [existing.image_link, ...(Array.isArray(existing.additional_image_link) ? existing.additional_image_link : [])];
+      await removeUnreferencedImages(db, supabaseUrl, uniqueStoragePaths(imageUrls, supabaseUrl));
+      return reply({ deleted: true, id: data.id });
+    }
+
+    return reply({ error: "Unknown route. Use /ambil, /tambah, /edit, or /hapus" }, 404);
   } catch (error) {
     console.error("product-crud unexpected error:", error instanceof Error ? error.message : String(error));
-    return response({ error: "Unexpected product service error" }, 500);
+    return reply({ error: "Unexpected product service error" }, 500);
   }
 });
