@@ -10,6 +10,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { StoreFooter } from '../components/StoreFooter';
+import appLogo from '../assets/app-logo.jpg';
 
 interface AccountPageProps {
   onGoToOrders?: () => void;
@@ -32,7 +33,10 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     <div className="flex-1 pb-24 flex flex-col bg-slate-50">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 py-3 border-b border-gray-100 flex items-center justify-between shadow-2xs">
-        <h1 className="text-sm font-bold text-gray-900">Akun &amp; Pengaturan</h1>
+        <div className="flex items-center gap-2">
+          <img src={appLogo} alt="Logo" className="w-6 h-6 rounded-md object-cover shadow-2xs border border-gray-100" />
+          <h1 className="text-sm font-bold text-gray-900">Akun &amp; Pengaturan</h1>
+        </div>
         <span className="text-[10px] text-gray-500 font-mono">Asri Collection v2.0</span>
       </header>
 

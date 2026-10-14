@@ -4,6 +4,7 @@ import { Product } from '../types';
 import { ProductCard } from '../components/ProductCard';
 import { StoreFooter } from '../components/StoreFooter';
 import { useCart } from '../context/CartContext';
+import appLogo from '../assets/app-logo.jpg';
 
 interface HomePageProps {
   products: Product[];
@@ -64,10 +65,12 @@ export const HomePage: React.FC<HomePageProps> = ({
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-2xs">
         {/* Store Header */}
         <header className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-[#2563EB] flex items-center justify-center text-white font-black text-sm shadow-sm">
-              AC
-            </div>
+          <div className="flex items-center space-x-2.5">
+            <img
+              src={appLogo}
+              alt="Asri Collection"
+              className="w-9 h-9 rounded-xl object-cover shadow-xs border border-gray-100 shrink-0"
+            />
             <div>
               <h1 className="text-sm font-bold text-gray-900 tracking-tight leading-tight">
                 Asri Collection

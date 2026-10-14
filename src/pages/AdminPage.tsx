@@ -22,6 +22,7 @@ import {
 import { Order, AdminMetrics } from '../types';
 import { formatRupiah, formatDate } from '../utils/formatters';
 import { StatusBadge } from '../components/StatusBadge';
+import appLogo from '../assets/app-logo.jpg';
 
 interface AdminPageProps {
   onBackToStore?: () => void;
@@ -208,8 +209,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
     return (
       <div className="flex-1 pb-24 flex flex-col bg-slate-50 justify-center p-5">
         <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-md text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-blue-100 text-[#2563EB] flex items-center justify-center mx-auto">
-            <Lock className="w-6 h-6" />
+          <div className="w-14 h-14 rounded-2xl mx-auto overflow-hidden shadow-xs border border-gray-100 flex items-center justify-center">
+            <img src={appLogo} alt="Asri Collection" className="w-full h-full object-cover" />
           </div>
 
           <div>
@@ -268,9 +269,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <div>
-              <h1 className="text-sm font-bold text-gray-900 leading-tight">Admin Dashboard</h1>
-              <p className="text-[10px] text-gray-500 font-mono">PIN Terverifikasi</p>
+            <div className="flex items-center gap-2">
+              <img src={appLogo} alt="Logo" className="w-8 h-8 rounded-lg object-cover shadow-xs border border-gray-100 shrink-0" />
+              <div>
+                <h1 className="text-sm font-bold text-gray-900 leading-tight">Admin Dashboard</h1>
+                <p className="text-[10px] text-gray-500 font-mono">PIN Terverifikasi</p>
+              </div>
             </div>
           </div>
 

@@ -101,7 +101,6 @@ serve(async (req: Request) => {
         : null,
       currency: "IDR",
       image_link: p.image_link || "",
-      additional_image_link: Array.isArray(p.additional_image_link) ? p.additional_image_link : [],
       brand: p.brand || "Asri Collection",
       product_type: p.product_type || "General",
       display_image: p.image_link || "",

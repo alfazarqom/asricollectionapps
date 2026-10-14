@@ -18,6 +18,7 @@ import { useCart } from '../context/CartContext';
 import { Recipient, CourierOption } from '../types';
 import { formatRupiah } from '../utils/formatters';
 import { DuitkuPopModal } from '../components/DuitkuPopModal';
+import appLogo from '../assets/app-logo.jpg';
 
 interface CheckoutPageProps {
   onBack?: () => void;
@@ -624,8 +625,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         <div className="p-4 space-y-4">
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm space-y-3.5">
             <div className="text-center">
-              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-2">
-                <CheckCircle2 className="w-6 h-6" />
+              <div className="w-14 h-14 rounded-2xl mx-auto overflow-hidden shadow-xs border border-gray-100 flex items-center justify-center mb-2.5">
+                <img src={appLogo} alt="Asri Collection" className="w-full h-full object-cover" />
               </div>
               <h2 className="text-base font-bold text-gray-900">Pesanan Telah Tercatat</h2>
               <p className="text-xs text-gray-500 mt-0.5">

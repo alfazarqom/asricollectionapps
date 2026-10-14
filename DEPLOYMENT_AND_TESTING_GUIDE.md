@@ -108,7 +108,7 @@ Sistem mengadopsi 100% parameter resmi sesuai dokumentasi dan SDK resmi Duitku (
 - **Production**: `https://api-prod.duitku.com/api/merchant/createInvoice`
 - **HTTP Headers Wajib**:
   - `Content-Type: application/json`
-  - `x-duitku-signature`: `HMAC_SHA256(merchantCode + timestamp, apiKey)` (Resmi Duitku POP; format hex lowercase)
+  - `x-duitku-signature`: `SHA256(merchantCode + timestamp + apiKey)`
   - `x-duitku-timestamp`: Milliseconds timestamp (`Date.now().toString()`)
   - `x-duitku-merchantcode`: Merchant code dari Duitku
 - **Payload Request**:
@@ -148,12 +148,12 @@ Sistem mengadopsi 100% parameter resmi sesuai dokumentasi dan SDK resmi Duitku (
   - `merchantCode`: Kode merchant.
   - `amount`: Nominal yang dibayar.
   - `merchantOrderId`: Nomor pesanan merchant.
-  - `resultCode`: `"00"` (Berhasil) | `"01"` (Gagal).
+  - `resultCode`: `"00"` (Berhasil) \| `"01"` (Gagal).
   - `reference`: Referensi transaksi Duitku.
-  - `signature`: `HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey)` (Resmi Duitku POP; didukung juga fallback `MD5(merchantCode + amount + merchantOrderId + apiKey)`).
+  - `signature`: `MD5(merchantCode + amount + merchantOrderId + apiKey)`.
 - **Verifikasi Wajib di Server**:
   1. Validasi `merchantCode`.
-  2. Hitung ulang HMAC-SHA256 signature (atau MD5) dan cocokkan dengan `signature` callback.
+  2. Hitung ulang MD5 signature dan cocokkan dengan `signature` callback.
   3. Cocokkan `merchantOrderId` dan `amount` persis sama dengan database.
   4. Periksa idempotensi: jika status sudah `"paid"`, jangan proses ulang stok.
   5. Kirim respon HTTP 200 dengan body teks: `"SUCCESS"`.

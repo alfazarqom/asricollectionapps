@@ -254,9 +254,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     brand VARCHAR(100),
     product_type VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
-    additional_image_link JSONB NOT NULL DEFAULT '[]'::jsonb
-        CHECK (jsonb_typeof(additional_image_link) = 'array')
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
 -- Seed / Sinkronisasi katalog produk

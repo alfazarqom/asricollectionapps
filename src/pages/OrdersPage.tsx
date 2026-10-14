@@ -5,6 +5,7 @@ import { Order } from '../types';
 import { formatRupiah, formatDate } from '../utils/formatters';
 import { StatusBadge } from '../components/StatusBadge';
 import { StoreFooter } from '../components/StoreFooter';
+import appLogo from '../assets/app-logo.jpg';
 
 interface OrdersPageProps {
   initialOrderNumber?: string;
@@ -331,9 +332,15 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
           <div className="space-y-4">
             {/* Search Box */}
             <form onSubmit={handleTrackOrder} className="bg-white rounded-xl p-4 border border-gray-100 shadow-xs space-y-3">
-              <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Search className="w-3.5 h-3.5 text-[#2563EB]" /> Cek Status Pesanan
-              </h2>
+              <div className="flex items-center gap-2.5 pb-2 border-b border-gray-100">
+                <img src={appLogo} alt="Asri Collection" className="w-8 h-8 rounded-lg object-cover shadow-2xs border border-gray-100 shrink-0" />
+                <div>
+                  <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                    Lacak Pesanan Pelanggan
+                  </h2>
+                  <p className="text-[10px] text-gray-500 font-medium">Asri Collection Official Store</p>
+                </div>
+              </div>
               <p className="text-[11px] text-gray-500">
                 Masukkan nomor pesanan yang Anda terima saat checkout untuk melihat status pembayaran, verifikasi invoice, dan status pengiriman kurir.
               </p>
