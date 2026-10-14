@@ -1,0 +1,87 @@
+name: Footer V1.1 checks
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-build-mobile-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: TypeScript check
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+      - name: Install browser test runtime
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Start production preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/asri-vite-preview.log 2>&1 &
+          echo $! > /tmp/asri-vite-preview.pid
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/asri-vite-preview.log
+          exit 1
+      - name: Mobile route and layout smoke test
+        run: |
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+          const routes = [
+            ['/cara-pemesanan', 'Cara Pemesanan'],
+            ['/pembayaran', 'Informasi Pembayaran'],
+            ['/tentang-kami', 'Tentang Asri Collection'],
+            ['/pengiriman-pelacakan', 'Lacak Pesanan Pelanggan'],
+          ];
+          const failures = [];
+          for (const [route, expectedHeading] of routes) {
+            const response = await page.goto('http://127.0.0.1:4173' + route, { waitUntil: 'domcontentloaded' });
+            await page.getByRole('heading', { name: expectedHeading }).waitFor({ timeout: 10000 }).catch(() => failures.push(route + ': heading not found: ' + expectedHeading));
+            const layout = await page.evaluate(() => ({
+              viewportWidth: window.innerWidth,
+              documentWidth: document.documentElement.scrollWidth,
+              footerCount: document.querySelectorAll('footer').length,
+              footerVisible: Boolean(document.querySelector('footer') && document.querySelector('footer').getBoundingClientRect().width > 0),
+            }));
+            if (!response || response.status() >= 400) failures.push(route + ': HTTP ' + (response?.status() ?? 'no response'));
+            if (layout.documentWidth > layout.viewportWidth) failures.push(route + ': horizontal overflow ' + JSON.stringify(layout));
+            if (!layout.footerVisible) failures.push(route + ': footer not visible ' + JSON.stringify(layout));
+            if (layout.footerCount !== 1) failures.push(route + ': expected one footer, found ' + layout.footerCount);
+            console.log(JSON.stringify({ route, status: response?.status(), ...layout }));
+          }
+          await page.goto('http://127.0.0.1:4173/cara-pemesanan', { waitUntil: 'domcontentloaded' });
+          await page.screenshot({ path: 'footer-v1.1-mobile.png', fullPage: true });
+          await browser.close();
+          if (failures.length) {
+            console.error(failures.join('\n'));
+            process.exit(1);
+          }
+          NODE
+      - name: Upload mobile screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: footer-v1.1-mobile-preview
+          path: footer-v1.1-mobile.png
+          if-no-files-found: ignore
