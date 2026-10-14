@@ -221,7 +221,7 @@ export function AppContent() {
       </Routes>
 
       {showFooterAtAppLevel && <StoreFooter />}
-      {showBottomNav && <BottomNav />
+      {showBottomNav && <BottomNav />}
     </MobileContainer>
   );
 }
