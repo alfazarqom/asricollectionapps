@@ -6,7 +6,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MobileContainer } from './components/MobileContainer';
-import { StoreFooter } from './components/StoreFooter';
 import { BottomNav, TabType } from './components/BottomNav';
 import { CartProvider, useCart } from './context/CartContext';
 import { Product } from './types';
@@ -27,6 +26,7 @@ import { RefundPolicyPage } from './pages/RefundPolicyPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { ShippingPolicyPage } from './pages/ShippingPolicyPage';
 import { ContactPage } from './pages/ContactPage';
+import { StoreInformationPage } from './pages/StoreInformationPage';
 
 export function AppContent() {
   const location = useLocation();
@@ -202,19 +202,21 @@ export function AppContent() {
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/shipping" element={<ShippingPolicyPage />} />
         <Route path="/contact" element={<ContactPage />} />
+        <Route path="/cara-pemesanan" element={<StoreInformationPage />} />
+        <Route path="/pembayaran" element={<StoreInformationPage />} />
+        <Route path="/tentang-kami" element={<StoreInformationPage />} />
         {/* Footer V1.1 URL aliases mapped to existing policy/contact pages */}
         <Route path="/hubungi-kami" element={<ContactPage />} />
         <Route path="/syarat-ketentuan" element={<TermsPage />} />
         <Route path="/kebijakan-privasi" element={<PrivacyPolicyPage />} />
         <Route path="/kebijakan-pengiriman" element={<ShippingPolicyPage />} />
-        <Route path="/pengiriman-pelacakan" element={<ShippingPolicyPage />} />
+        <Route path="/pengiriman-pelacakan" element={<OrdersPage onBackToHome={() => navigate("/")} />} />
         <Route path="/kebijakan-pengembalian" element={<RefundPolicyPage />} />
 
         {/* Fallback 404 Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      <StoreFooter />
       {showBottomNav && <BottomNav />
     </MobileContainer>
   );
