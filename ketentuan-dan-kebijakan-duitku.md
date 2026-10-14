@@ -34,7 +34,7 @@ Bagian ini merangkum hal yang dinyatakan oleh sumber resmi yang dirujuk. Ringkas
 
 ## A1. Website dan informasi bisnis
 
-**Menurut FAQ Duitku:**
+**Menurut FAQ Duitku yang dirujuk dalam dokumen ini:**
 - Website yang didaftarkan harus aktif dan dipublikasikan.
 - FAQ menyebut website bukan sekadar tautan marketplace, media sosial, atau subdomain platform pembuat website.
 - Untuk aplikasi, FAQ menyebut aplikasi harus telah dipublikasikan di App Store atau Play Store.
@@ -42,9 +42,11 @@ Bagian ini merangkum hal yang dinyatakan oleh sumber resmi yang dirujuk. Ringkas
 - Informasi kontak yang disebutkan meliputi nomor telepon, alamat, dan email.
 - Produk atau jasa harus sesuai dengan izin usaha yang berlaku bagi merchant.
 
+**Bukti yang perlu disiapkan saat audit website:** URL website aktif, halaman yang menjelaskan bisnis dan produk, halaman kontak yang menampilkan informasi kontak aktif, serta dokumen legalitas yang relevan dengan bentuk usaha. Daftar bukti ini merupakan cara verifikasi internal; bukan klaim bahwa Duitku mensyaratkan format bukti tertentu.
+
 Sumber: https://www.duitku.com/frequently-asked-questions/
 
-Pemenuhan poin ini tidak menjamin pengajuan merchant otomatis disetujui.
+Pemenuhan poin ini tidak menjamin pengajuan merchant otomatis disetujui. Verifikasi akhir mengikuti proses dan keputusan Duitku.
 
 ## A2. Kategori yang tidak diterima
 
@@ -130,9 +132,9 @@ stringToSign = merchantCode + amount + merchantOrderId
 signature = HMAC_SHA256(stringToSign, apiKey)
 ```
 
-Dokumentasi POP menggunakan `resultCode = "00"` untuk menunjukkan transaksi berhasil pada callback yang dijelaskan. Nilai tersebut harus dinilai bersama validasi signature dan kecocokan data transaksi.
+Dokumentasi POP menggunakan `resultCode = "00"` untuk menunjukkan transaksi berhasil pada callback yang dijelaskan. Nilai tersebut tidak boleh dipakai sendirian sebagai bukti pembayaran: backend harus memvalidasi signature sesuai spesifikasi aktif, mencocokkan `merchantCode`, `merchantOrderId`, nominal dan referensi transaksi dengan catatan pesanan, serta memeriksa bahwa transisi status memang diizinkan.
 
-Dokumentasi juga menjelaskan respons HTTP 200 OK untuk callback yang diproses dengan benar. Implementasikan respons dan penanganan error sesuai petunjuk callback terbaru.
+Dokumentasi juga menjelaskan respons HTTP 200 OK untuk callback yang diproses dengan benar. Implementasikan respons dan penanganan error sesuai petunjuk callback terbaru. Callback berulang harus ditangani secara idempoten agar tidak menggandakan pemrosesan pembayaran, pembuatan pesanan, atau pengurangan stok.
 
 Sumber: https://docs.duitku.com/pop/id/
 
@@ -164,13 +166,13 @@ Bagian ini berisi praktik yang disarankan untuk website e-commerce. Poin-poin in
 - Detail produk, varian, dan harga.
 - Keranjang dan checkout.
 - Halaman status pesanan/pembayaran.
-- Kontak.
+- Kontak yang mudah ditemukan dan memuat informasi bisnis yang benar.
 - Informasi pengiriman.
 - Syarat dan ketentuan.
 - Kebijakan privasi.
 - Kebijakan pembatalan dan refund.
 
-Daftar ini adalah rekomendasi transparansi e-commerce, bukan daftar halaman wajib Duitku yang telah diverifikasi satu per satu.
+Daftar ini adalah rekomendasi transparansi e-commerce, bukan daftar halaman wajib Duitku yang telah diverifikasi satu per satu. Keberadaan halaman saja tidak cukup: isi halaman harus akurat dan sesuai dengan praktik bisnis aktual.
 
 ## B2. Informasi produk
 
@@ -297,12 +299,46 @@ Jika dokumentasi publik tidak cukup jelas, mintalah konfirmasi tertulis dari Dui
 - [ ] Pengujian sandbox selesai.
 - [ ] Logging dan rekonsiliasi tersedia.
 
-## D3. Konfirmasi sebelum produksi
+## D3. Audit kesiapan website merchant
 
-- [ ] Hal yang belum jelas telah dikonfirmasi kepada Duitku.
+Untuk setiap butir, catat status **Lulus**, **Gagal**, atau **Belum diverifikasi**, beserta URL halaman/bukti, tanggal pemeriksaan, dan catatan. Jangan menandai Lulus hanya berdasarkan asumsi.
+
+- [ ] Website dapat diakses publik dan aktif.
+- [ ] Website bukan sekadar tautan marketplace/media sosial atau subdomain platform pembuat website, sesuai FAQ yang dirujuk.
+- [ ] Identitas bisnis dan produk/jasa dijelaskan dengan jelas.
+- [ ] Informasi kontak berupa telepon, alamat, dan email tersedia serta aktif.
+- [ ] Produk/jasa sesuai dengan izin usaha dan bukan kategori yang dilarang.
+- [ ] Harga, cara pembelian, pengiriman, dan dukungan pelanggan dijelaskan dengan akurat.
+- [ ] Halaman syarat dan ketentuan, privasi, pengiriman, pembatalan/refund telah ditinjau sebagai rekomendasi transparansi; kewajiban spesifiknya perlu dikonfirmasi jika tidak eksplisit di sumber resmi.
+- [ ] Dokumen legalitas dan persyaratan merchant mengikuti instruksi akun/proses pendaftaran Duitku.
+
+Catatan: checklist ini merupakan alat audit internal berdasarkan sumber yang dirujuk, bukan keputusan kelayakan merchant oleh Duitku.
+
+## D4. Konfirmasi sebelum produksi
+
+- [ ] Hal yang belum jelas telah dikonfirmasi kepada Duitku, idealnya secara tertulis.
 - [ ] Kanal pembayaran yang diperlukan telah aktif.
 - [ ] Persyaratan aktivasi produksi telah dipenuhi.
+- [ ] Kredensial sandbox dan produksi dipisahkan.
+- [ ] Create Invoice, signature, callback, nominal, status, dan penanganan callback berulang telah diuji.
 - [ ] Pengujian akhir selesai sebelum transaksi nyata.
+
+## D5. Matriks bukti dan pemeliharaan referensi
+
+Catat hasil pemeriksaan dalam format berikut ketika audit dilakukan. Kolom status dan tanggal harus diisi berdasarkan pemeriksaan nyata; dokumen ini tidak mengklaim bahwa website atau akun merchant telah diperiksa.
+
+| Area | Bukti yang dicatat | Status audit | Tanggal / catatan |
+|---|---|---|---|
+| Website dan konten bisnis | URL website dan halaman bisnis/produk | Belum diverifikasi | Isi saat audit |
+| Kontak | URL halaman kontak dan hasil uji kontak | Belum diverifikasi | Isi saat audit |
+| Legalitas dan kategori produk | Dokumen merchant serta konfirmasi kategori bila diperlukan | Belum diverifikasi | Isi saat audit |
+| Create Invoice | Endpoint, request contoh tersanitasi, hasil sandbox | Belum diverifikasi | Isi saat audit |
+| Signature request | Rumus, input uji, hasil yang diharapkan dan aktual | Belum diverifikasi | Isi saat audit |
+| Callback | Payload tersanitasi, validasi signature, kecocokan nominal/order | Belum diverifikasi | Isi saat audit |
+| Idempotensi | Bukti callback duplikat tidak menggandakan efek | Belum diverifikasi | Isi saat audit |
+| Aktivasi produksi | Konfirmasi kanal dan status merchant dari Duitku | Belum diverifikasi | Isi saat audit |
+
+**Pemeliharaan sumber:** saat mengaudit ulang, periksa URL resmi yang tercantum, catat tanggal akses, judul/bagian yang mendukung klaim, dan setiap perubahan penting. Jika sumber tidak menyatakan suatu hal secara eksplisit, klasifikasikan sebagai rekomendasi atau perlu konfirmasi—jangan menyebutnya persyaratan resmi.
 
 ---
 
@@ -315,4 +351,4 @@ Jika dokumentasi publik tidak cukup jelas, mintalah konfirmasi tertulis dari Dui
 5. Duitku Privacy Policy — https://www.duitku.com/kebijakan-privasi/
 6. Duitku Knowledge Base — https://knowledge.duitku.com/umum
 
-**Catatan pemutakhiran:** tanggal penyusunan tidak menjamin semua sumber telah diperbarui pada tanggal tersebut. Periksa dokumentasi terbaru dan konfirmasikan persyaratan merchant sebelum produksi.
+**Catatan pemutakhiran:** tanggal penyusunan tidak menjamin semua sumber telah diperbarui pada tanggal tersebut. Periksa dokumentasi terbaru dan konfirmasikan persyaratan merchant sebelum produksi. Status audit website, kode, konfigurasi, sandbox, dan persetujuan merchant harus dicatat terpisah; dokumen kebijakan ini sendiri bukan bukti bahwa implementasi telah diuji atau merchant telah disetujui.
