@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { MobileContainer } from './components/MobileContainer';
+import { StoreFooter } from './components/StoreFooter';
 import { BottomNav, TabType } from './components/BottomNav';
 import { CartProvider, useCart } from './context/CartContext';
 import { Product } from './types';
@@ -201,12 +202,20 @@ export function AppContent() {
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
         <Route path="/shipping" element={<ShippingPolicyPage />} />
         <Route path="/contact" element={<ContactPage />} />
+        {/* Footer V1.1 URL aliases mapped to existing policy/contact pages */}
+        <Route path="/hubungi-kami" element={<ContactPage />} />
+        <Route path="/syarat-ketentuan" element={<TermsPage />} />
+        <Route path="/kebijakan-privasi" element={<PrivacyPolicyPage />} />
+        <Route path="/kebijakan-pengiriman" element={<ShippingPolicyPage />} />
+        <Route path="/pengiriman-pelacakan" element={<ShippingPolicyPage />} />
+        <Route path="/kebijakan-pengembalian" element={<RefundPolicyPage />} />
 
         {/* Fallback 404 Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {showBottomNav && <BottomNav />}
+      <StoreFooter />
+      {showBottomNav && <BottomNav />
     </MobileContainer>
   );
 }
