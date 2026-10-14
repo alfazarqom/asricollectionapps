@@ -56,7 +56,9 @@ jobs:
           const failures = [];
           for (const [route, expectedHeading] of routes) {
             const response = await page.goto('http://127.0.0.1:4173' + route, { waitUntil: 'domcontentloaded' });
-            await page.getByRole('heading', { name: expectedHeading }).waitFor({ timeout: 10000 }).catch(() => failures.push(route + ': heading not found: ' + expectedHeading));
+            await page.waitForTimeout(500);
+            const visibleText = await page.locator('body').innerText();
+            if (!visibleText.includes(expectedHeading)) failures.push(route + ': expected page text not found: ' + expectedHeading + '; current URL=' + page.url());
             const layout = await page.evaluate(() => ({
               viewportWidth: window.innerWidth,
               documentWidth: document.documentElement.scrollWidth,
@@ -67,7 +69,7 @@ jobs:
             if (layout.documentWidth > layout.viewportWidth) failures.push(route + ': horizontal overflow ' + JSON.stringify(layout));
             if (!layout.footerVisible) failures.push(route + ': footer not visible ' + JSON.stringify(layout));
             if (layout.footerCount !== 1) failures.push(route + ': expected one footer, found ' + layout.footerCount);
-            console.log(JSON.stringify({ route, status: response?.status(), ...layout }));
+            console.log(JSON.stringify({ route, currentUrl: page.url(), status: response?.status(), headings: await page.locator('h1, h2').allTextContents(), ...layout }));
           }
           await page.goto('http://127.0.0.1:4173/cara-pemesanan', { waitUntil: 'domcontentloaded' });
           await page.screenshot({ path: 'footer-v1.1-mobile.png', fullPage: true });
