@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft, Phone, Mail, MapPin, Clock, ShieldCheck, MessageCircle, Building2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StoreFooter } from '../components/StoreFooter';
+import footerConfig from '../config/footer.json';
 
 export const ContactPage: React.FC = () => {
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ export const ContactPage: React.FC = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-gray-900">WhatsApp Layanan Pelanggan</p>
-                <p className="text-xs font-mono font-bold text-emerald-800 mt-0.5">0812-9876-5432</p>
+                <p className="text-xs font-mono font-bold text-emerald-800 mt-0.5">{footerConfig.footer.business_information.contacts.find((contact) => contact.label === 'WhatsApp')?.value}</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Respons cepat untuk konsultasi produk &amp; bantuan pembayaran</p>
               </div>
             </div>
@@ -65,7 +66,7 @@ export const ContactPage: React.FC = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-gray-900">Email Customer Support</p>
-                <p className="text-xs font-mono font-bold text-[#2563EB] mt-0.5">support@asricollection.id</p>
+                <p className="text-xs font-mono font-bold text-[#2563EB] mt-0.5">{footerConfig.footer.business_information.contacts.find((contact) => contact.label === 'Email')?.value}</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Untuk pertanyaan transaksi, retur barang, dan invoice Duitku</p>
               </div>
             </div>
@@ -78,7 +79,7 @@ export const ContactPage: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-gray-900">Alamat Gerai &amp; Pusat Pengiriman</p>
                 <p className="text-xs text-gray-800 mt-0.5 leading-relaxed">
-                  Jl. Jenderal Sudirman No. 45, RT 02 / RW 04, Karet Semanggi, Setiabudi, Jakarta Selatan, DKI Jakarta 12190
+                  {footerConfig.footer.business_information.contacts.find((contact) => contact.label === 'Alamat Usaha')?.value}
                 </p>
               </div>
             </div>
