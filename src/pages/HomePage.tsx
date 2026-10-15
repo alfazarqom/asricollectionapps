@@ -165,7 +165,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* Dynamic Promo Slider — data from Supabase Edge Function get-banner */}
       {activePromo && (
-        <section className="px-4 py-2.5" aria-label="Promo spesial">
+        <section className="px-1.5 pt-1 pb-2" aria-label="Promo spesial">
           <div className="relative">
             <button type="button" onClick={() => onSelectProduct(activePromo)} aria-label={`Lihat promo ${activePromo.title}`}
               className="relative block min-h-[150px] w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#2563EB] to-blue-700 p-4 text-left text-white shadow-md active:scale-[0.99] transition-transform">
