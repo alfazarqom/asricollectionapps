@@ -10,7 +10,7 @@ export const MobileContainer: React.FC<MobileContainerProps> = ({ children }) =>
       {/* Strict Mobile Container: Max 480px, Centered on Tablet/Desktop, Full Width on Phone */}
       <div className="w-full max-w-[480px] min-h-full h-full bg-white shadow-2xl relative flex flex-col overflow-x-clip">
         {/* Content Area */}
-        <main className="flex-1 flex flex-col w-full">
+        <main className="min-h-[90vh] flex-1 flex flex-col w-full">
           {children}
         </main>
       </div>
