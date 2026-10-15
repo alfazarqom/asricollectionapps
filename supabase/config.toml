@@ -1,0 +1,4 @@
+project_id = "mvwflakurihhakdrlteg"
+
+[functions.get-banner]
+verify_jwt = false
