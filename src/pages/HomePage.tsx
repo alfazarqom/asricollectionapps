@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, ShoppingBag, Sparkles, Tag, ArrowRight, ShieldCheck, Truck } from 'lucide-react';
 import { Product } from '../types';
 import { ProductCard } from '../components/ProductCard';
@@ -26,6 +26,53 @@ export const HomePage: React.FC<HomePageProps> = ({
   const { totalItems } = useCart();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [promoProduct, setPromoProduct] = useState<Product | null>(null);
+
+  // Promo banner uses the public Supabase Edge Function as its source of truth.
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadPromoProduct = async () => {
+      try {
+        const response = await fetch(
+          'https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-banner?limit=1',
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error(`get-banner returned HTTP ${response.status}`);
+
+        const result = await response.json();
+        const item = Array.isArray(result?.data) ? result.data[0] : null;
+        if (!item || !item.id || !item.title) {
+          setPromoProduct(null);
+          return;
+        }
+
+        setPromoProduct({
+          id: String(item.id),
+          title: String(item.title),
+          description: String(item.description ?? ''),
+          availability: item.availability ?? 'in stock',
+          condition: 'new',
+          price: Number(item.price),
+          sale_price: Number(item.sale_price),
+          currency: String(item.currency ?? 'IDR'),
+          image_link: String(item.image_link ?? ''),
+          additional_image_link: '',
+          brand: String(item.brand ?? 'Asri Collection'),
+          product_type: String(item.product_type ?? 'General'),
+          created_at: item.created_at ?? undefined,
+          updated_at: item.updated_at ?? undefined,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        console.error('Gagal memuat banner promo dari get-banner:', error);
+        setPromoProduct(null);
+      }
+    };
+
+    void loadPromoProduct();
+    return () => controller.abort();
+  }, []);
 
   const dynamicCategories = React.useMemo(() => {
     return Array.from(
@@ -119,27 +166,48 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </div>
 
-      {/* Promo Banner Slider / Card */}
-      <div className="px-4 py-2.5">
-        <div className="bg-gradient-to-r from-[#2563EB] to-blue-700 rounded-2xl p-4 text-white shadow-md relative overflow-hidden">
-          <div className="relative z-10 max-w-[70%]">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-semibold text-white mb-2 backdrop-blur-xs">
-              <Sparkles className="w-3 h-3 text-amber-300" /> PROMO SPESIAL
-            </span>
-            <h2 className="text-sm font-bold leading-tight">
-              Koleksi Pilihan &amp; Diskon Menarik
-            </h2>
-            <p className="text-[11px] text-blue-100 mt-1">
-              Checkout instan tanpa ribet bikin akun dengan Duitku POP.
-            </p>
-          </div>
-
-          <div className="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
-          <div className="absolute right-3 bottom-3 text-4xl select-none opacity-80">
-            🛍️
-          </div>
+      {/* Dynamic Promo Banner — data from Supabase Edge Function get-banner */}
+      {promoProduct && (
+        <div className="px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => onSelectProduct(promoProduct)}
+            aria-label={`Lihat promo ${promoProduct.title}`}
+            className="block w-full text-left bg-gradient-to-r from-[#2563EB] to-blue-700 rounded-2xl p-4 text-white shadow-md relative overflow-hidden min-h-[132px] active:scale-[0.99] transition-transform"
+          >
+            {promoProduct.image_link && (
+              <img
+                src={promoProduct.image_link}
+                alt=""
+                loading="lazy"
+                className="absolute right-0 top-0 h-full w-[43%] object-cover object-center"
+                onError={(event) => { event.currentTarget.style.display = 'none'; }}
+              />
+            )}
+            <div className="absolute inset-y-0 right-0 w-[58%] bg-gradient-to-r from-blue-700 via-blue-700/75 to-transparent pointer-events-none" />
+            <div className="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
+            <div className="relative z-10 max-w-[70%]">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-semibold text-white mb-2 backdrop-blur-xs">
+                <Sparkles className="w-3 h-3 text-amber-300" /> PROMO SPESIAL
+              </span>
+              <h2 className="text-sm font-bold leading-tight line-clamp-2">
+                {promoProduct.title}
+              </h2>
+              <p className="text-[11px] text-blue-100 mt-1">
+                <span className="line-through opacity-80 mr-1">
+                  {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(promoProduct.price)}
+                </span>
+                <span className="font-bold text-white">
+                  {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(promoProduct.sale_price ?? promoProduct.price)}
+                </span>
+              </p>
+              <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-semibold text-white">
+                Lihat promo <ArrowRight className="w-3 h-3" />
+              </span>
+            </div>
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Value Proposition Pills */}
       <div className="px-4 py-1 flex items-center justify-between text-[11px] text-gray-600">
