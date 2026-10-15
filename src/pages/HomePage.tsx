@@ -37,8 +37,58 @@ export const HomePage: React.FC<HomePageProps> = ({
     );
   }, [products]);
 
+  const featuredSaleProducts = React.useMemo(() => {
+    const now = Date.now();
+
+    return products
+      .filter((product) => {
+        const salePrice = Number(product.sale_price);
+        if (
+          !Number.isFinite(salePrice) ||
+          salePrice <= 0 ||
+          salePrice >= product.price ||
+          product.price <= 0 ||
+          product.availability === 'out of stock'
+        ) {
+          return false;
+        }
+
+        if (product.sale_price_starts_at) {
+          const startsAt = Date.parse(product.sale_price_starts_at);
+          if (Number.isFinite(startsAt) && now < startsAt) return false;
+        }
+
+        if (product.sale_price_ends_at) {
+          const endsAt = Date.parse(product.sale_price_ends_at);
+          if (Number.isFinite(endsAt) && now > endsAt) return false;
+        }
+
+        return Boolean(product.display_image || product.image_link);
+      })
+      .slice(0, 2);
+  }, [products]);
+
   const hasSaleProducts = React.useMemo(() => {
-    return products.some((p) => p.sale_price !== null && p.sale_price !== undefined);
+    const now = Date.now();
+    return products.some((product) => {
+      const salePrice = Number(product.sale_price);
+      if (
+        !Number.isFinite(salePrice) ||
+        salePrice <= 0 ||
+        salePrice >= product.price ||
+        product.price <= 0 ||
+        product.availability === 'out of stock'
+      ) return false;
+      if (product.sale_price_starts_at) {
+        const startsAt = Date.parse(product.sale_price_starts_at);
+        if (Number.isFinite(startsAt) && now < startsAt) return false;
+      }
+      if (product.sale_price_ends_at) {
+        const endsAt = Date.parse(product.sale_price_ends_at);
+        if (Number.isFinite(endsAt) && now > endsAt) return false;
+      }
+      return true;
+    });
   }, [products]);
 
   // Filter products based on search query and chip filter
@@ -51,7 +101,19 @@ export const HomePage: React.FC<HomePageProps> = ({
     if (!matchesSearch) return false;
 
     if (selectedFilter === 'sale') {
-      return p.sale_price !== null && p.sale_price !== undefined;
+      const salePrice = Number(p.sale_price);
+      const now = Date.now();
+      const startsAt = p.sale_price_starts_at ? Date.parse(p.sale_price_starts_at) : NaN;
+      const endsAt = p.sale_price_ends_at ? Date.parse(p.sale_price_ends_at) : NaN;
+      return (
+        Number.isFinite(salePrice) &&
+        salePrice > 0 &&
+        salePrice < p.price &&
+        p.price > 0 &&
+        p.availability !== 'out of stock' &&
+        (!Number.isFinite(startsAt) || now >= startsAt) &&
+        (!Number.isFinite(endsAt) || now <= endsAt)
+      );
     }
     if (selectedFilter !== 'all') {
       return p.product_type?.toLowerCase() === selectedFilter.toLowerCase();
@@ -119,26 +181,93 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </div>
 
-      {/* Promo Banner Slider / Card */}
+      {/* Promo Banner with live catalog products */}
       <div className="px-4 py-2.5">
-        <div className="bg-gradient-to-r from-[#2563EB] to-blue-700 rounded-2xl p-4 text-white shadow-md relative overflow-hidden">
-          <div className="relative z-10 max-w-[70%]">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-semibold text-white mb-2 backdrop-blur-xs">
-              <Sparkles className="w-3 h-3 text-amber-300" /> PROMO SPESIAL
-            </span>
-            <h2 className="text-sm font-bold leading-tight">
-              Koleksi Pilihan &amp; Diskon Menarik
-            </h2>
-            <p className="text-[11px] text-blue-100 mt-1">
-              Checkout instan tanpa ribet bikin akun dengan Duitku POP.
-            </p>
-          </div>
+        <section className="relative isolate min-h-[168px] aspect-[2/1] w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#2563EB] via-blue-600 to-blue-800 p-3 text-white shadow-md sm:p-4">
+          <div className="pointer-events-none absolute -right-8 -top-12 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-10 left-1/4 h-28 w-28 rounded-full bg-cyan-300/15 blur-2xl" />
 
-          <div className="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
-          <div className="absolute right-3 bottom-3 text-4xl select-none opacity-80">
-            🛍️
+          <div className="relative z-10 grid h-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+            <div className="flex min-w-0 flex-col items-start justify-center">
+              <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-1 text-[9px] font-semibold text-white backdrop-blur-sm sm:text-[10px]">
+                <Sparkles className="h-3 w-3 text-amber-300" />
+                {featuredSaleProducts.length > 0 ? 'PROMO SPESIAL' : 'KOLEKSI PILIHAN'}
+              </span>
+              <h2 className="text-[13px] font-bold leading-tight sm:text-base">
+                {featuredSaleProducts.length > 0
+                  ? 'Diskon Menarik untuk Kamu'
+                  : 'Koleksi Pilihan Asri'}
+              </h2>
+              <p className="mt-1.5 line-clamp-3 text-[10px] leading-snug text-blue-100 sm:text-xs">
+                {featuredSaleProducts.length > 0
+                  ? 'Lihat produk pilihan dengan harga promo.'
+                  : 'Temukan produk favoritmu dengan mudah.'}
+              </p>
+              <span className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-white/90 sm:text-[10px]">
+                Belanja mudah <ArrowRight className="h-3 w-3" />
+              </span>
+            </div>
+
+            <div className="flex min-w-0 flex-col justify-center gap-2">
+              {featuredSaleProducts.length > 0 ? (
+                featuredSaleProducts.map((product) => {
+                  const salePrice = Number(product.sale_price);
+                  const discount = Math.round(((product.price - salePrice) / product.price) * 100);
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => onSelectProduct(product)}
+                      aria-label={`Lihat produk ${product.title}`}
+                      className="flex min-w-0 items-center gap-2 rounded-xl border border-white/20 bg-white/15 p-1.5 text-left backdrop-blur-sm transition-colors hover:bg-white/25 active:scale-[0.98]"
+                    >
+                      <img
+                        src={product.display_image || product.image_link}
+                        alt={product.title}
+                        loading="lazy"
+                        className="h-11 w-11 shrink-0 rounded-lg bg-white object-cover sm:h-12 sm:w-12"
+                        onError={(event) => {
+                          event.currentTarget.style.visibility = 'hidden';
+                        }}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[9px] font-semibold leading-tight sm:text-[10px]">
+                          {product.title}
+                        </span>
+                        <span className="mt-1 block text-[10px] font-bold leading-tight sm:text-xs">
+                          {new Intl.NumberFormat('id-ID', {
+                            style: 'currency',
+                            currency: 'IDR',
+                            maximumFractionDigits: 0,
+                          }).format(salePrice)}
+                        </span>
+                        <span className="mt-0.5 flex min-w-0 items-center gap-1">
+                          <span className="truncate text-[8px] text-blue-100 line-through sm:text-[9px]">
+                            {new Intl.NumberFormat('id-ID', {
+                              style: 'currency',
+                              currency: 'IDR',
+                              maximumFractionDigits: 0,
+                            }).format(product.price)}
+                          </span>
+                          <span className="shrink-0 rounded bg-rose-500 px-1 py-0.5 text-[8px] font-bold leading-none text-white">
+                            -{discount}%
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="flex h-full min-h-20 items-center justify-center rounded-xl border border-white/15 bg-white/10 p-3 text-center">
+                  <div>
+                    <ShoppingBag className="mx-auto h-7 w-7 text-white/80" />
+                    <p className="mt-1 text-[9px] font-medium text-blue-100">Produk promo segera hadir</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </section>
       </div>
 
       {/* Value Proposition Pills */}
