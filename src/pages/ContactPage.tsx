@@ -36,7 +36,7 @@ export const ContactPage: React.FC = () => {
             <div>
               <h2 className="text-xs font-bold text-gray-900">Asri Collection Indonesia</h2>
               <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
-                Toko busana dan perlengkapan gaya hidup resmi dengan integrasi pembayaran aman dan layanan pelanggan responsif.
+                Toko online Asri Collection. Hubungi kami untuk pertanyaan produk, pesanan, dan pembayaran.
               </p>
             </div>
           </div>
@@ -56,7 +56,7 @@ export const ContactPage: React.FC = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-gray-900">WhatsApp Layanan Pelanggan</p>
-                <p className="text-xs font-mono font-bold text-emerald-800 mt-0.5">0812-9876-5432</p>
+                <p className="text-xs font-mono font-bold text-emerald-800 mt-0.5">+62 821-5676-4434</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Respons cepat untuk konsultasi produk &amp; bantuan pembayaran</p>
               </div>
             </div>
@@ -68,7 +68,7 @@ export const ContactPage: React.FC = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-gray-900">Email Customer Support</p>
-                <p className="text-xs font-mono font-bold text-[#2563EB] mt-0.5">support@asricollection.id</p>
+                <p className="text-xs font-mono font-bold text-[#2563EB] mt-0.5">asricollections82@gmail.com</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Untuk pertanyaan transaksi, retur barang, dan invoice Duitku</p>
               </div>
             </div>
@@ -81,7 +81,7 @@ export const ContactPage: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-gray-900">Alamat Gerai &amp; Pusat Pengiriman</p>
                 <p className="text-xs text-gray-800 mt-0.5 leading-relaxed">
-                  Jl. Jenderal Sudirman No. 45, RT 02 / RW 04, Karet Semanggi, Setiabudi, Jakarta Selatan, DKI Jakarta 12190
+                  Sidenreng Rappang, Sulawesi Selatan, Indonesia
                 </p>
               </div>
             </div>
@@ -94,7 +94,7 @@ export const ContactPage: React.FC = () => {
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-gray-900">Jam Operasional Layanan</p>
                 <p className="text-xs text-gray-800 mt-0.5">
-                  Senin – Sabtu: 08.00 – 18.00 WIB
+                  Senin–Sabtu: 09.00–17.00 WITA (jadwal usulan)
                 </p>
                 <p className="text-[10px] text-gray-500 mt-0.5">Minggu &amp; Libur Nasional: Pelayanan via WhatsApp terbatas</p>
               </div>
@@ -106,10 +106,10 @@ export const ContactPage: React.FC = () => {
         <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-xs space-y-2">
           <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
-            Kemitraan Resmi Payment Gateway
+            Informasi Pembayaran
           </h3>
           <p className="text-[11px] text-gray-600 leading-relaxed">
-            Sistem pembayaran elektronik Asri Collection disediakan oleh <strong className="text-gray-900">PT Duitku Cyber Global (Duitku Payment Gateway)</strong>, Penyelenggara Jasa Pembayaran (PJP) Kategori 3 yang telah berizin resmi dari <strong className="text-[#2563EB]">Bank Indonesia</strong>.
+            Pilihan metode pembayaran yang tersedia akan ditampilkan pada halaman checkout sesuai kanal yang aktif.
           </p>
         </div>
       </div>
