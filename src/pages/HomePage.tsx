@@ -68,11 +68,6 @@ export const HomePage: React.FC<HomePageProps> = ({
       .slice(0, 2);
   }, [products]);
 
-  const saleProductIds = React.useMemo(
-    () => new Set(featuredSaleProducts.map((product) => product.id)),
-    [featuredSaleProducts]
-  );
-
   const hasSaleProducts = React.useMemo(() => {
     const now = Date.now();
     return products.some((product) => {
