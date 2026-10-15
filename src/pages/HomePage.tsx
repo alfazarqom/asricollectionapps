@@ -26,7 +26,9 @@ export const HomePage: React.FC<HomePageProps> = ({
   const { totalItems } = useCart();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
-  const [promoProduct, setPromoProduct] = useState<Product | null>(null);
+  const [promoProducts, setPromoProducts] = useState<Product[]>([]);
+  const [activePromoIndex, setActivePromoIndex] = useState(0);
+  const activePromo = promoProducts[activePromoIndex] ?? null;
 
   // Promo banner uses the public Supabase Edge Function as its source of truth.
   useEffect(() => {
@@ -35,44 +37,39 @@ export const HomePage: React.FC<HomePageProps> = ({
     const loadPromoProduct = async () => {
       try {
         const response = await fetch(
-          'https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-banner?limit=1',
+          'https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-banner?limit=10',
           { signal: controller.signal },
         );
         if (!response.ok) throw new Error(`get-banner returned HTTP ${response.status}`);
 
         const result = await response.json();
-        const item = Array.isArray(result?.data) ? result.data[0] : null;
-        if (!item || !item.id || !item.title) {
-          setPromoProduct(null);
-          return;
-        }
-
-        setPromoProduct({
-          id: String(item.id),
-          title: String(item.title),
-          description: String(item.description ?? ''),
-          availability: item.availability ?? 'in stock',
-          condition: 'new',
-          price: Number(item.price),
-          sale_price: Number(item.sale_price),
-          currency: String(item.currency ?? 'IDR'),
-          image_link: String(item.image_link ?? ''),
-          additional_image_link: '',
-          brand: String(item.brand ?? 'Asri Collection'),
-          product_type: String(item.product_type ?? 'General'),
-          created_at: item.created_at ?? undefined,
-          updated_at: item.updated_at ?? undefined,
-        });
+        const items = Array.isArray(result?.data) ? result.data : [];
+        const mappedProducts = items.filter((item: any) => item?.id && item?.title).map((item: any): Product => ({
+          id: String(item.id), title: String(item.title), description: String(item.description ?? ''),
+          availability: item.availability ?? 'in stock', condition: 'new', price: Number(item.price),
+          sale_price: Number(item.sale_price), currency: String(item.currency ?? 'IDR'),
+          image_link: String(item.image_link ?? ''), additional_image_link: '',
+          brand: String(item.brand ?? 'Asri Collection'), product_type: String(item.product_type ?? 'General'),
+          created_at: item.created_at ?? undefined, updated_at: item.updated_at ?? undefined,
+        }));
+        setPromoProducts(mappedProducts);
+        setActivePromoIndex(0);
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
         console.error('Gagal memuat banner promo dari get-banner:', error);
-        setPromoProduct(null);
+        setPromoProducts([]);
       }
     };
 
     void loadPromoProduct();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (promoProducts.length < 2) return;
+    const timer = window.setInterval(() => setActivePromoIndex(i => (i + 1) % promoProducts.length), 4500);
+    return () => window.clearInterval(timer);
+  }, [promoProducts.length]);
 
   const dynamicCategories = React.useMemo(() => {
     return Array.from(
@@ -166,47 +163,40 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </div>
 
-      {/* Dynamic Promo Banner — data from Supabase Edge Function get-banner */}
-      {promoProduct && (
-        <div className="px-4 py-2.5">
-          <button
-            type="button"
-            onClick={() => onSelectProduct(promoProduct)}
-            aria-label={`Lihat promo ${promoProduct.title}`}
-            className="block w-full text-left bg-gradient-to-r from-[#2563EB] to-blue-700 rounded-2xl p-4 text-white shadow-md relative overflow-hidden min-h-[132px] active:scale-[0.99] transition-transform"
-          >
-            {promoProduct.image_link && (
-              <img
-                src={promoProduct.image_link}
-                alt=""
-                loading="lazy"
-                className="absolute right-0 top-0 h-full w-[43%] object-cover object-center"
-                onError={(event) => { event.currentTarget.style.display = 'none'; }}
-              />
-            )}
-            <div className="absolute inset-y-0 right-0 w-[58%] bg-gradient-to-r from-blue-700 via-blue-700/75 to-transparent pointer-events-none" />
-            <div className="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
-            <div className="relative z-10 max-w-[70%]">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-semibold text-white mb-2 backdrop-blur-xs">
-                <Sparkles className="w-3 h-3 text-amber-300" /> PROMO SPESIAL
-              </span>
-              <h2 className="text-sm font-bold leading-tight line-clamp-2">
-                {promoProduct.title}
-              </h2>
-              <p className="text-[11px] text-blue-100 mt-1">
-                <span className="line-through opacity-80 mr-1">
-                  {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(promoProduct.price)}
-                </span>
-                <span className="font-bold text-white">
-                  {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(promoProduct.sale_price ?? promoProduct.price)}
-                </span>
-              </p>
-              <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-semibold text-white">
-                Lihat promo <ArrowRight className="w-3 h-3" />
-              </span>
-            </div>
-          </button>
-        </div>
+      {/* Dynamic Promo Slider — data from Supabase Edge Function get-banner */}
+      {activePromo && (
+        <section className="px-4 py-2.5" aria-label="Promo spesial">
+          <div className="relative">
+            <button type="button" onClick={() => onSelectProduct(activePromo)} aria-label={`Lihat promo ${activePromo.title}`}
+              className="relative block min-h-[150px] w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#2563EB] to-blue-700 p-4 text-left text-white shadow-md active:scale-[0.99] transition-transform">
+              {activePromo.image_link && <img key={activePromo.id} src={activePromo.image_link} alt="" loading="lazy"
+                className="absolute right-0 top-0 h-full w-[48%] object-cover object-center"
+                onError={event => { event.currentTarget.style.display = 'none'; }} />}
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-[65%] bg-gradient-to-r from-blue-700 via-blue-700/75 to-transparent" />
+              <div className="pointer-events-none absolute -right-6 -bottom-6 h-32 w-32 rounded-full bg-white/10 blur-xl" />
+              <div className="relative z-10 max-w-[72%]">
+                <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold backdrop-blur-xs"><Sparkles className="h-3 w-3 text-amber-300" /> PROMO SPESIAL</span>
+                <h2 className="line-clamp-2 text-sm font-bold leading-tight">{activePromo.title}</h2>
+                <p className="mt-1 text-[11px] text-blue-100">
+                  <span className="mr-1 line-through opacity-80">{new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(activePromo.price)}</span>
+                  <span className="font-bold text-white">{new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(activePromo.sale_price ?? activePromo.price)}</span>
+                </p>
+                <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold">Lihat promo <ArrowRight className="h-3 w-3" /></span>
+              </div>
+            </button>
+            {promoProducts.length > 1 && <>
+              <button type="button" onClick={() => setActivePromoIndex(i => (i-1+promoProducts.length)%promoProducts.length)} aria-label="Promo sebelumnya"
+                className="absolute left-2 top-1/2 z-20 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-blue-700 shadow"><span aria-hidden="true">‹</span></button>
+              <button type="button" onClick={() => setActivePromoIndex(i => (i+1)%promoProducts.length)} aria-label="Promo berikutnya"
+                className="absolute right-2 top-1/2 z-20 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-blue-700 shadow"><span aria-hidden="true">›</span></button>
+              <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="Pilih slide promo">
+                {promoProducts.map((product,index)=><button key={product.id} type="button" onClick={()=>setActivePromoIndex(index)}
+                  aria-label={`Tampilkan promo ${index+1}`} aria-current={index===activePromoIndex?'true':undefined}
+                  className={`h-1.5 rounded-full transition-all ${index===activePromoIndex?'w-5 bg-[#2563EB]':'w-1.5 bg-slate-300'}`} />)}
+              </div>
+            </>}
+          </div>
+        </section>
       )}
 
       {/* Value Proposition Pills */}
