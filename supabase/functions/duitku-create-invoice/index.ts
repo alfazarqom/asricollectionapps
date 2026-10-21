@@ -124,17 +124,23 @@ serve(async (req: Request) => {
         );
       }
 
-      const qty = parseInt(item.quantity, 10);
-      if (isNaN(qty) || qty <= 0) {
+      const qty = Number(item.quantity);
+      if (!Number.isSafeInteger(qty) || qty <= 0) {
         return new Response(
           JSON.stringify({ error: `Kuantitas produk "${liveProduct.title}" tidak valid.` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      const verifiedUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined 
-        ? Number(liveProduct.sale_price) 
+      const verifiedUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined
+        ? Number(liveProduct.sale_price)
         : Number(liveProduct.price);
+      if (!Number.isFinite(verifiedUnitPrice) || verifiedUnitPrice < 0) {
+        return new Response(
+          JSON.stringify({ error: `Harga produk "${liveProduct.title}" tidak valid.` }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
       const itemSubtotal = verifiedUnitPrice * qty;
       calculatedSubtotal += itemSubtotal;
@@ -158,9 +164,15 @@ serve(async (req: Request) => {
       "pickup_store": 0,
     };
 
-    const courierCode = courier?.code || "sicepat_reg";
-    const verifiedShippingCost = validCouriers[courierCode] ?? 18000;
-    const verifiedCourierName = courier?.name || "SiCepat REG";
+    const courierCode = String(courier?.code ?? "");
+    if (!Object.prototype.hasOwnProperty.call(validCouriers, courierCode)) {
+      return new Response(
+        JSON.stringify({ error: "Pilihan kurir tidak valid." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const verifiedShippingCost = validCouriers[courierCode];
+    const verifiedCourierName = courierCode;
 
     const verifiedTotal = calculatedSubtotal + verifiedShippingCost;
 
