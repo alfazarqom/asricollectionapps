@@ -115,6 +115,16 @@ serve(async (req: Request) => {
 
         if (duitkuRes.ok) {
           const duitkuStatus = await duitkuRes.json();
+          if (
+            String(duitkuStatus.merchantOrderId || "") !== cleanOrderNumber ||
+            !Number.isFinite(Number(duitkuStatus.amount)) ||
+            Number(duitkuStatus.amount) !== Number(order.total_amount)
+          ) {
+            console.error("Duitku status response does not match the requested order.");
+            return new Response(JSON.stringify({ error: "Respons status pembayaran tidak cocok dengan pesanan." }), {
+              status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
           if (duitkuStatus.statusCode === "00") {
             // Perbarui status menjadi paid
             order.payment_status = "paid";
