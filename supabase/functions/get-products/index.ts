@@ -89,27 +89,13 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "Unable to retrieve product catalog" }, 502);
     }
 
-    const sanitizedProducts = (data || []).map((p: any) => ({
-      id: String(p.id ?? ""),
-      title: String(p.title || "").substring(0, 50),
-      description: String(p.description || ""),
-      availability: p.availability || "in stock",
-      condition: p.condition || "new",
-      price: Math.round(Number(p.price) || 0),
-      sale_price: p.sale_price !== null && p.sale_price !== undefined
-        ? Math.round(Number(p.sale_price))
-        : null,
-      currency: "IDR",
-      image_link: p.image_link || "",
-      brand: p.brand || "Asri Collection",
-      product_type: p.product_type || "General",
-      display_image: p.image_link || "",
-      created_at: p.created_at || null,
-      updated_at: p.updated_at || null,
-    }));
+    // Return database rows unchanged. select("*") preserves every current and future
+    // public.products column, including additional_image_link (JSONB), without defaults,
+    // truncation, numeric coercion, or hardcoded field values.
+    const products = data ?? [];
 
     // Empty query results and unknown IDs intentionally return []—never fabricated products.
-    return jsonResponse(sanitizedProducts);
+    return jsonResponse(products);
   } catch (err) {
     console.error("get-products unexpected error:", err instanceof Error ? err.message : String(err));
     return jsonResponse({ error: "Product catalog is temporarily unavailable" }, 500);
