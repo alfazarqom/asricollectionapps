@@ -224,7 +224,7 @@ serve(async (req: Request) => {
     // Formula resmi Duitku POP: HMAC_SHA256(merchantCode + timestamp, apiKey)
     const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + timestamp);
 
-    const callbackUrl = `${SUPABASE_URL.replace(/\\/$/, "")}/functions/v1/duitku-callback`;
+    const callbackUrl = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/duitku-callback`;
     const returnUrl = Deno.env.get("DUITKU_RETURN_URL") || `${APP_URL}/orders/${orderNumber}?token=${accessToken}`;
 
     const itemDetailsPayload = validatedItems.map((it) => ({
