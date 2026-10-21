@@ -33,6 +33,11 @@ serve(async (req: Request) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(JSON.stringify({ error: "Konfigurasi backend belum lengkap." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     let orderNumber = "";
@@ -75,8 +80,8 @@ serve(async (req: Request) => {
       });
     }
 
-    // 2. Otorisasi Kepemilikan: Jika token akses disertakan, validasi kecocokannya
-    if (accessToken && order.access_token && order.access_token !== accessToken) {
+    // 2. Otorisasi wajib: order number saja bukan bukti kepemilikan.
+    if (!accessToken || !order.access_token || order.access_token !== accessToken) {
       return new Response(JSON.stringify({ error: "Akses ditolak. Token akses tidak valid." }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -111,7 +116,7 @@ serve(async (req: Request) => {
             if (order.fulfillment_status === "unfulfilled") {
               order.fulfillment_status = "processing";
             }
-            await supabase
+            const { error: paidUpdateError } = await supabase
               .from("orders")
               .update({
                 payment_status: "paid",
@@ -119,18 +124,20 @@ serve(async (req: Request) => {
                 updated_at: new Date().toISOString(),
               })
               .eq("id", order.id);
+            if (paidUpdateError) throw paidUpdateError;
 
-            try {
-              await supabase.rpc("commit_inventory_atomic", { p_order_id: order.id });
-            } catch (_rpcErr) {
-              // RPC non-critical here
+            const { error: inventoryCommitError } = await supabase.rpc("commit_inventory_atomic", { p_order_id: order.id });
+            if (inventoryCommitError) {
+              console.error("Inventory commit failed after status reconciliation:", inventoryCommitError.message);
+              throw inventoryCommitError;
             }
           } else if (duitkuStatus.statusCode === "02") {
             order.payment_status = "failed";
-            await supabase
+            const { error: failedUpdateError } = await supabase
               .from("orders")
               .update({ payment_status: "failed", updated_at: new Date().toISOString() })
               .eq("id", order.id);
+            if (failedUpdateError) throw failedUpdateError;
           }
         }
       } catch (e) {
