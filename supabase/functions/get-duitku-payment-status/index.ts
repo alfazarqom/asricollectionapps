@@ -62,61 +62,6 @@ serve(async (req: Request) => {
       status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
-    // 3. Rekonsiliasi Otomatis dengan Duitku TransactionStatus API jika masih pending
-    if (order.payment_status === "pending" && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-      const checkUrl = DUITKU_ENV === "production"
-        ? "https://api-prod.duitku.com/api/merchant/transactionStatus"
-        : "https://api-sandbox.duitku.com/api/merchant/transactionStatus";
-
-      // Formula: MD5(merchantCode + merchantOrderId + apiKey)
-      const signature = await md5Hex(DUITKU_MERCHANT_CODE + cleanOrderNumber + DUITKU_API_KEY);
-
-      try {
-        const duitkuRes = await fetch(checkUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            merchantCode: DUITKU_MERCHANT_CODE,
-            merchantOrderId: cleanOrderNumber,
-            signature,
-          }),
-        });
-
-        if (duitkuRes.ok) {
-          const duitkuStatus = await duitkuRes.json();
-          if (duitkuStatus.statusCode === "00") {
-            // Perbarui status menjadi paid
-            order.payment_status = "paid";
-            if (order.fulfillment_status === "unfulfilled") {
-              order.fulfillment_status = "processing";
-            }
-            await supabase
-              .from("orders")
-              .update({
-                payment_status: "paid",
-                fulfillment_status: order.fulfillment_status,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", order.id);
-
-            try {
-              await supabase.rpc("commit_inventory_atomic", { p_order_id: order.id });
-            } catch (_rpcErr) {
-              // RPC non-critical here
-            }
-          } else if (duitkuStatus.statusCode === "02") {
-            order.payment_status = "failed";
-            await supabase
-              .from("orders")
-              .update({ payment_status: "failed", updated_at: new Date().toISOString() })
-              .eq("id", order.id);
-          }
-        }
-      } catch (e) {
-        console.warn("Duitku status check error:", e);
-      }
-    }
-
     // Read-only endpoint: verified callbacks are the only payment mutation path.
     const { access_token, order_items, ...safeOrder } = order;
     safeOrder.items = order_items || [];
