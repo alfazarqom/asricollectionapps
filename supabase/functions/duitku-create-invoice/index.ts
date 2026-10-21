@@ -156,12 +156,12 @@ serve(async (req: Request) => {
     }
 
     // 3. Validasi Ongkos Kirim di Backend
-    const validCouriers: Record<string, number> = {
-      "jne_reg": 18000,
-      "sicepat_reg": 16000,
-      "jnt_reg": 17000,
-      "gosend_sameday": 25000,
-      "pickup_store": 0,
+    const validCouriers: Record<string, { name: string; cost: number }> = {
+      "jne_reg": { name: "JNE Reguler", cost: 18000 },
+      "sicepat_reg": { name: "SiCepat REG", cost: 16000 },
+      "jnt_reg": { name: "J&T Express", cost: 17000 },
+      "gosend_sameday": { name: "GoSend Same Day", cost: 25000 },
+      "pickup_store": { name: "Ambil di Toko", cost: 0 },
     };
 
     const courierCode = String(courier?.code ?? "");
@@ -171,8 +171,9 @@ serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const verifiedShippingCost = validCouriers[courierCode];
-    const verifiedCourierName = courierCode;
+    const selectedCourier = validCouriers[courierCode];
+    const verifiedShippingCost = selectedCourier.cost;
+    const verifiedCourierName = selectedCourier.name;
 
     const verifiedTotal = calculatedSubtotal + verifiedShippingCost;
 
