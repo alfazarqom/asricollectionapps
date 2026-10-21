@@ -157,7 +157,7 @@ app.get('/api/config-status', (_req: Request, res: Response) => {
     merchantCode: DUITKU_MERCHANT_CODE ? `${DUITKU_MERCHANT_CODE.substring(0, 3)}***` : 'Tersimpan di Supabase Secret',
     env: DUITKU_ENV,
     appUrl: APP_URL,
-    callbackUrl: `${APP_URL}/api/duitku-callback`,
+    callbackUrl: 'https://mvwflakurihhakdrlteg.supabase.co/functions/v1/duitku-callback',
   });
 });
 
