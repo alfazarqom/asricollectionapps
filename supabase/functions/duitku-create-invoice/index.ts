@@ -207,7 +207,7 @@ serve(async (req: Request) => {
       const { data: reservationResult, error: reservationError } = await supabase.rpc("reserve_inventory_atomic", {
         p_order_id: orderId, p_product_id: it.product_id, p_quantity: it.quantity, p_minutes: 60,
       });
-      if (reservationError || reservationResult?.success === false) {
+      if (reservationError || reservationResult === false || reservationResult?.success === false) {
         console.error("Inventory reservation failed; no Duitku invoice was requested.");
         return new Response(JSON.stringify({ error: "Stok belum dapat diamankan. Pesanan belum ditagihkan." }), {
           status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
