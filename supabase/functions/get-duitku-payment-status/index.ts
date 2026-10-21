@@ -29,7 +29,7 @@ serve(async (req: Request) => {
     const orderNumber = typeof body.orderNumber === "string" ? body.orderNumber.trim() : "";
     const accessToken = typeof body.token === "string" ? body.token : "";
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    const phone = typeof body.phone === "string" ? body.phone.replace(/\\D/g, "") : "";
+    const phone = typeof body.phone === "string" ? body.phone.replace(/\D/g, "") : "";
 
     if (!orderNumber || !orderNumber.trim()) {
       return new Response(JSON.stringify({ error: "Nomor pesanan harus diisi" }), {
