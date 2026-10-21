@@ -28,15 +28,6 @@ async function hmacSha256Hex(key: string, data: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Helper: SHA256 hex digest (standard fallback)
-async function sha256Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -372,8 +363,9 @@ serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
+    console.error("Duitku invoice processing error:", err?.message || "unknown error");
     return new Response(
-      JSON.stringify({ error: err.message || "Terjadi kesalahan internal pada server." }),
+      JSON.stringify({ error: "Terjadi kesalahan internal saat membuat invoice." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
