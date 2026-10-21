@@ -57,7 +57,7 @@ serve(async (req: Request) => {
     // Every request must prove order ownership. A missing token never bypasses authorization.
     const tokenMatches = Boolean(accessToken && order.access_token && order.access_token === accessToken);
     const emailMatches = Boolean(email && typeof order.customer_email === "string" && email === order.customer_email.trim().toLowerCase());
-    const phoneMatches = Boolean(phone && typeof order.customer_phone === "string" && phone === order.customer_phone.replace(/\\D/g, ""));
+    const phoneMatches = Boolean(phone && typeof order.customer_phone === "string" && phone === order.customer_phone.replace(/\D/g, ""));
     if (!tokenMatches && !emailMatches && !phoneMatches) return new Response(JSON.stringify({ error: "Akses ditolak. Verifikasi pemilik pesanan tidak cocok." }), {
       status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
