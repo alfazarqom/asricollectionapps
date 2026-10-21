@@ -11,7 +11,7 @@ export interface Product {
   currency: string;
   link?: string;
   image_link: string;
-  additional_image_link?: string;
+  additional_image_link?: string[] | null;
   brand: string;
   item_group_id?: string;
   google_product_category?: string;
