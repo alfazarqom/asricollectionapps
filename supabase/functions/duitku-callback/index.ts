@@ -6,15 +6,6 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
-// Helper: MD5 hex digest
-async function md5Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 // Helper: HMAC-SHA256 hex digest
 async function hmacSha256Hex(key: string, data: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -53,7 +44,7 @@ serve(async (req: Request) => {
     const contentType = req.headers.get("content-type") || "";
     let payload: Record<string, any> = {};
 
-    if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
+    if (contentType.includes("application/x-www-form-urlencoded")) {
       const params = new URLSearchParams(await req.text());
       for (const [key, value] of params.entries()) payload[key] = value;
     } else if (contentType.includes("application/json")) {
