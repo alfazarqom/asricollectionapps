@@ -4,53 +4,32 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Helper: MD5 hex digest
-async function md5Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
+    status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 
   try {
-    const DUITKU_MERCHANT_CODE = Deno.env.get("DUITKU_MERCHANT_CODE") || "";
-    const DUITKU_API_KEY = Deno.env.get("DUITKU_API_KEY") || "";
-    const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return new Response(JSON.stringify({ error: "Layanan status pesanan belum dikonfigurasi." }), {
+      status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    let orderNumber = "";
-    let accessToken = "";
-
-    if (req.method === "GET") {
-      const url = new URL(req.url);
-      orderNumber = url.searchParams.get("orderNumber") || url.searchParams.get("order_number") || "";
-      accessToken = url.searchParams.get("token") || "";
-    } else {
-      try {
-        const body = await req.json();
-        orderNumber = body.orderNumber || body.order_number || "";
-        accessToken = body.token || body.accessToken || "";
-      } catch (_e) {
-        // Body might be empty or url-encoded
-      }
-    }
+    const body = await req.json().catch(() => ({}));
+    const orderNumber = typeof body.orderNumber === "string" ? body.orderNumber.trim() : "";
+    const accessToken = typeof body.token === "string" ? body.token : "";
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const phone = typeof body.phone === "string" ? body.phone.replace(/\\D/g, "") : "";
 
     if (!orderNumber || !orderNumber.trim()) {
       return new Response(JSON.stringify({ error: "Nomor pesanan harus diisi" }), {
@@ -75,13 +54,13 @@ serve(async (req: Request) => {
       });
     }
 
-    // 2. Otorisasi Kepemilikan: Jika token akses disertakan, validasi kecocokannya
-    if (accessToken && order.access_token && order.access_token !== accessToken) {
-      return new Response(JSON.stringify({ error: "Akses ditolak. Token akses tidak valid." }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // Every request must prove order ownership. A missing token never bypasses authorization.
+    const tokenMatches = Boolean(accessToken && order.access_token && order.access_token === accessToken);
+    const emailMatches = Boolean(email && typeof order.customer_email === "string" && email === order.customer_email.trim().toLowerCase());
+    const phoneMatches = Boolean(phone && typeof order.customer_phone === "string" && phone === order.customer_phone.replace(/\\D/g, ""));
+    if (!tokenMatches && !emailMatches && !phoneMatches) return new Response(JSON.stringify({ error: "Akses ditolak. Verifikasi pemilik pesanan tidak cocok." }), {
+      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
     // 3. Rekonsiliasi Otomatis dengan Duitku TransactionStatus API jika masih pending
     if (order.payment_status === "pending" && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
@@ -138,24 +117,16 @@ serve(async (req: Request) => {
       }
     }
 
-    // 4. Return Safe Response (Hide Access Token & Secrets)
+    // Read-only endpoint: verified callbacks are the only payment mutation path.
     const { access_token, order_items, ...safeOrder } = order;
     safeOrder.items = order_items || [];
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        order: safeOrder,
-        paymentStatus: safeOrder.payment_status,
-        fulfillmentStatus: safeOrder.fulfillment_status,
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err: any) {
-    console.error("Error in get-duitku-payment-status:", err);
-    return new Response(
-      JSON.stringify({ error: err.message || "Gagal memproses pengecekan status pesanan." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({
+      success: true, order: safeOrder, paymentStatus: safeOrder.payment_status, fulfillmentStatus: safeOrder.fulfillment_status,
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  } catch (_err: any) {
+    console.error("Order status request failed.");
+    return new Response(JSON.stringify({ error: "Gagal memproses pengecekan status pesanan." }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
