@@ -37,6 +37,9 @@ async function sha256Hex(str: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+let activeSupabase: any = null;
+let activeOrderId: string | null = null;
+
 serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -44,14 +47,30 @@ serve(async (req: Request) => {
   }
 
   try {
-    const DUITKU_MERCHANT_CODE = Deno.env.get("DUITKU_MERCHANT_CODE") || "";
-    const DUITKU_API_KEY = Deno.env.get("DUITKU_API_KEY") || "";
+    const DUITKU_MERCHANT_CODE = Deno.env.get("DUITKU_MERCHANT_CODE");
+    const DUITKU_API_KEY = Deno.env.get("DUITKU_API_KEY");
     const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const APP_URL = Deno.env.get("APP_URL") || "https://example.com";
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const APP_URL = Deno.env.get("APP_URL");
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !APP_URL) {
+      console.error("duitku-create-invoice: required server configuration is missing");
+      return new Response(JSON.stringify({ error: "Payment service is not configured" }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+    const appUrl = new URL(APP_URL);
+    if (!["https:", "http:"].includes(appUrl.protocol) || appUrl.hostname === "example.com") {
+      return new Response(JSON.stringify({ error: "Payment service URL configuration is invalid" }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    activeSupabase = supabase;
 
     const body = await req.json();
     const {
@@ -77,15 +96,12 @@ serve(async (req: Request) => {
 
     // 2. Validasi Otoritatif Produk & Harga dari Database Supabase (atau get-products Edge Function)
     // JANGAN percaya harga dari client/browser!
-    let authoritativeCatalog: any[] = [];
-    const { data: dbProducts, error: dbErr } = await supabase.from("products").select("*");
-    if (!dbErr && dbProducts && dbProducts.length > 0) {
-      authoritativeCatalog = dbProducts;
-    } else {
-      const catalogResponse = await fetch("https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products");
-      if (catalogResponse.ok) {
-        authoritativeCatalog = await catalogResponse.json();
-      }
+    const { data: authoritativeCatalog, error: catalogError } = await supabase.from("products").select("*");
+    if (catalogError || !authoritativeCatalog) {
+      console.error("duitku-create-invoice: authoritative product query failed");
+      return new Response(JSON.stringify({ error: "Product catalog is temporarily unavailable" }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
     }
     const catalogMap = new Map(authoritativeCatalog.map((p: any) => [p.id, p]));
 
@@ -181,6 +197,7 @@ serve(async (req: Request) => {
     }
 
     const orderId = orderData.id;
+    activeOrderId = orderId;
 
     // Simpan order items
     const itemsToInsert = validatedItems.map((it) => ({
@@ -279,9 +296,7 @@ serve(async (req: Request) => {
         throw new Error(duitkuResult.statusMessage || "Duitku menolak pembuatan invoice.");
       }
     } else {
-      // Sandbox fallback token untuk mode testing lokal/staging
-      reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
+      throw new Error("Duitku credentials are required; simulated payment links are disabled.");
     }
 
     // Update order dengan referensi Duitku
@@ -324,9 +339,26 @@ serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
+    if (activeSupabase && activeOrderId) {
+      // Mark failed invoice attempts terminal and release any reservation rows already created.
+      const { error: orderCleanupError } = await activeSupabase
+        .from("orders")
+        .update({ payment_status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", activeOrderId)
+        .eq("payment_status", "pending");
+      const { error: reservationCleanupError } = await activeSupabase
+        .from("inventory_reservations")
+        .update({ status: "released" })
+        .eq("order_id", activeOrderId)
+        .eq("status", "reserved");
+      if (orderCleanupError || reservationCleanupError) {
+        console.error("duitku-create-invoice: failed to clean up unsuccessful invoice attempt");
+      }
+    }
+    console.error("duitku-create-invoice: invoice creation failed");
     return new Response(
-      JSON.stringify({ error: err.message || "Terjadi kesalahan internal pada server." }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Unable to create payment invoice. Please retry." }),
+      { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" } }
     );
   }
 });
