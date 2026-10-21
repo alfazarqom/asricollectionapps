@@ -12,13 +12,18 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-// Helper: MD5 hex digest
-async function md5Hex(str: string): Promise<string> {
+// Helper: HMAC-SHA256 hex digest, matching the current Duitku transaction-status API.
+async function hmacSha256Hex(key: string, data: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(data));
+  return Array.from(new Uint8Array(signatureBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 serve(async (req: Request) => {
@@ -91,11 +96,11 @@ serve(async (req: Request) => {
     // 3. Rekonsiliasi Otomatis dengan Duitku TransactionStatus API jika masih pending
     if (order.payment_status === "pending" && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
       const checkUrl = DUITKU_ENV === "production"
-        ? "https://api-prod.duitku.com/api/merchant/transactionStatus"
-        : "https://api-sandbox.duitku.com/api/merchant/transactionStatus";
+        ? "https://passport.duitku.com/webapi/api/merchant/transactionStatus"
+        : "https://sandbox.duitku.com/webapi/api/merchant/transactionStatus";
 
-      // Formula: MD5(merchantCode + merchantOrderId + apiKey)
-      const signature = await md5Hex(DUITKU_MERCHANT_CODE + cleanOrderNumber + DUITKU_API_KEY);
+      // Current Duitku API docs: HMAC-SHA256(merchantCode + merchantOrderId, apiKey).
+      const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + cleanOrderNumber);
 
       try {
         const duitkuRes = await fetch(checkUrl, {
@@ -141,7 +146,10 @@ serve(async (req: Request) => {
           }
         }
       } catch (e) {
-        console.warn("Duitku status check error:", e);
+        console.error("Duitku status reconciliation failed:", e?.message || "unknown error");
+        return new Response(JSON.stringify({ error: "Status pembayaran belum dapat diverifikasi. Silakan coba kembali." }), {
+          status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 
