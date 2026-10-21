@@ -28,15 +28,6 @@ async function hmacSha256Hex(key: string, data: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Helper: SHA256 hex digest (standard fallback)
-async function sha256Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -49,7 +40,30 @@ serve(async (req: Request) => {
     const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const APP_URL = Deno.env.get("APP_URL") || "https://example.com";
+    const APP_URL = Deno.env.get("APP_URL") || "";
+    const DUITKU_CALLBACK_URL = Deno.env.get("DUITKU_CALLBACK_URL") || "";
+    const DUITKU_RETURN_URL = Deno.env.get("DUITKU_RETURN_URL") || "";
+
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY) {
+      return new Response(JSON.stringify({ error: "Konfigurasi Duitku belum lengkap." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(JSON.stringify({ error: "Konfigurasi backend belum lengkap." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!["sandbox", "production"].includes(DUITKU_ENV)) {
+      return new Response(JSON.stringify({ error: "DUITKU_ENV harus bernilai sandbox atau production." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!APP_URL || !DUITKU_CALLBACK_URL) {
+      return new Response(JSON.stringify({ error: "APP_URL dan DUITKU_CALLBACK_URL wajib dikonfigurasi." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -77,15 +91,12 @@ serve(async (req: Request) => {
 
     // 2. Validasi Otoritatif Produk & Harga dari Database Supabase (atau get-products Edge Function)
     // JANGAN percaya harga dari client/browser!
-    let authoritativeCatalog: any[] = [];
-    const { data: dbProducts, error: dbErr } = await supabase.from("products").select("*");
-    if (!dbErr && dbProducts && dbProducts.length > 0) {
-      authoritativeCatalog = dbProducts;
-    } else {
-      const catalogResponse = await fetch("https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products");
-      if (catalogResponse.ok) {
-        authoritativeCatalog = await catalogResponse.json();
-      }
+    const { data: authoritativeCatalog, error: dbErr } = await supabase.from("products").select("*");
+    if (dbErr || !authoritativeCatalog) {
+      console.error("Failed to load authoritative product catalog:", dbErr?.message);
+      return new Response(JSON.stringify({ error: "Katalog produk sementara tidak tersedia." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
     const catalogMap = new Map(authoritativeCatalog.map((p: any) => [p.id, p]));
 
@@ -108,17 +119,22 @@ serve(async (req: Request) => {
         );
       }
 
-      const qty = parseInt(item.quantity, 10);
-      if (isNaN(qty) || qty <= 0) {
+      const qty = Number(item.quantity);
+      if (!Number.isSafeInteger(qty) || qty <= 0) {
         return new Response(
           JSON.stringify({ error: `Kuantitas produk "${liveProduct.title}" tidak valid.` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      const verifiedUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined 
-        ? Number(liveProduct.sale_price) 
+      const verifiedUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined
+        ? Number(liveProduct.sale_price)
         : Number(liveProduct.price);
+      if (!Number.isFinite(verifiedUnitPrice) || verifiedUnitPrice < 0) {
+        return new Response(JSON.stringify({ error: "Harga produk tidak valid di database." }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       const itemSubtotal = verifiedUnitPrice * qty;
       calculatedSubtotal += itemSubtotal;
@@ -187,16 +203,28 @@ serve(async (req: Request) => {
       ...it,
       order_id: orderId,
     }));
-    await supabase.from("order_items").insert(itemsToInsert);
+    const { error: itemsError } = await supabase.from("order_items").insert(itemsToInsert);
+    if (itemsError) {
+      console.error("Failed to save order items:", itemsError.message);
+      return new Response(JSON.stringify({ error: "Gagal menyimpan rincian pesanan." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    // Buat inventory reservation atomik
+    // Reservasi inventaris harus berhasil untuk setiap item sebelum invoice dibuat.
     for (const it of validatedItems) {
-      await supabase.rpc("reserve_inventory_atomic", {
+      const { data: reservationResult, error: reservationError } = await supabase.rpc("reserve_inventory_atomic", {
         p_order_id: orderId,
         p_product_id: it.product_id,
         p_quantity: it.quantity,
         p_minutes: 60,
       });
+      if (reservationError || reservationResult?.success === false) {
+        console.error("Inventory reservation failed:", reservationError?.message || reservationResult?.message);
+        return new Response(JSON.stringify({ error: "Stok tidak dapat dipesan. Silakan coba kembali." }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // 6. Buat Signature & Request ke Duitku POP
@@ -208,8 +236,8 @@ serve(async (req: Request) => {
     // Formula resmi Duitku POP: HMAC_SHA256(merchantCode + timestamp, apiKey)
     const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + timestamp);
 
-    const callbackUrl = Deno.env.get("DUITKU_CALLBACK_URL") || `${APP_URL}/api/duitku-callback`;
-    const returnUrl = Deno.env.get("DUITKU_RETURN_URL") || `${APP_URL}/orders/${orderNumber}?token=${accessToken}`;
+    const callbackUrl = DUITKU_CALLBACK_URL;
+    const returnUrl = DUITKU_RETURN_URL || `${APP_URL.replace(/\/$/, "")}/orders/${orderNumber}?token=${accessToken}`;
 
     const itemDetailsPayload = validatedItems.map((it) => ({
       name: it.title.substring(0, 50),
@@ -257,8 +285,8 @@ serve(async (req: Request) => {
     let reference = "";
     let paymentUrl = "";
 
-    // Panggil Duitku jika credentials ada, atau gunakan sandbox simulation jika kosong
-    if (DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
+    // Konfigurasi wajib: tidak pernah membuat invoice simulasi jika kredensial kosong.
+    {
       const duitkuResponse = await fetch(createInvoiceUrl, {
         method: "POST",
         headers: {
@@ -272,29 +300,34 @@ serve(async (req: Request) => {
 
       const duitkuResult = await duitkuResponse.json();
 
-      if (duitkuResult.statusCode === "00" && duitkuResult.reference) {
+      if (duitkuResult.statusCode === "00" && duitkuResult.reference && duitkuResult.paymentUrl) {
         reference = duitkuResult.reference;
-        paymentUrl = duitkuResult.paymentUrl || "";
+        paymentUrl = duitkuResult.paymentUrl;
       } else {
-        throw new Error(duitkuResult.statusMessage || "Duitku menolak pembuatan invoice.");
+        console.error("Duitku invoice rejected:", duitkuResult.statusCode || "unknown");
+        return new Response(JSON.stringify({ error: "Duitku gagal membuat invoice pembayaran." }), {
+          status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
-    } else {
-      // Sandbox fallback token untuk mode testing lokal/staging
-      reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
     }
 
     // Update order dengan referensi Duitku
-    await supabase
+    const { error: updateOrderError } = await supabase
       .from("orders")
       .update({
         duitku_reference: reference,
         duitku_payment_url: paymentUrl,
       })
       .eq("id", orderId);
+    if (updateOrderError) {
+      console.error("Failed to persist Duitku invoice reference:", updateOrderError.message);
+      return new Response(JSON.stringify({ error: "Invoice dibuat, tetapi gagal menyimpan referensi pembayaran. Hubungi dukungan sebelum mencoba ulang." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Catat record awal ke tabel payments
-    await supabase.from("payments").insert({
+    const { error: paymentInsertError } = await supabase.from("payments").insert({
       order_id: orderId,
       merchant_order_id: orderNumber,
       reference,
@@ -307,6 +340,12 @@ serve(async (req: Request) => {
       environment: DUITKU_ENV,
       status: "pending",
     });
+    if (paymentInsertError) {
+      console.error("Failed to persist payment record:", paymentInsertError.message);
+      return new Response(JSON.stringify({ error: "Invoice dibuat, tetapi pencatatan pembayaran gagal. Hubungi dukungan sebelum mencoba ulang." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Kembalikan HANYA data yang diperlukan frontend (tanpa secrets!)
     return new Response(
@@ -324,8 +363,9 @@ serve(async (req: Request) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
+    console.error("Duitku invoice processing error:", err?.message || "unknown error");
     return new Response(
-      JSON.stringify({ error: err.message || "Terjadi kesalahan internal pada server." }),
+      JSON.stringify({ error: "Terjadi kesalahan internal saat membuat invoice." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
