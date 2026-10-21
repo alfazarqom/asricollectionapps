@@ -104,7 +104,15 @@ serve(async (req: Request) => {
       p_result_code: resultCode,
       p_reference: reference || null,
       p_payment_method: paymentMethod || paymentCode || "Duitku POP",
-      p_raw_payload: payload,
+      p_raw_payload: {
+        merchantCode,
+        amount: amountText,
+        merchantOrderId,
+        resultCode,
+        reference: reference || null,
+        paymentCode: paymentCode || null,
+        paymentMethod: paymentMethod || null,
+      },
     });
 
     if (spError) {
