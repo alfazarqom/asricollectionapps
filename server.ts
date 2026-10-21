@@ -164,591 +164,78 @@ app.get('/api/config-status', (_req: Request, res: Response) => {
 // 3. POST /api/create-invoice (Duitku POP Create Invoice & Order Creation)
 app.post('/api/create-invoice', async (req: Request, res: Response) => {
   try {
-    const { recipient, items, courier } = req.body;
-
-    // A. Validasi Data Penerima
-    if (!recipient?.name || !recipient?.phone || !recipient?.email || !recipient?.address) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data penerima tidak lengkap. Mohon lengkapi nama, nomor telepon, email, dan alamat.',
-      });
-    }
-
-    // Validasi format email & nomor telepon
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(recipient.email.trim())) {
-      return res.status(400).json({ success: false, error: 'Format email tidak valid.' });
-    }
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, error: 'Keranjang belanja kosong.' });
-    }
-
-    // B. Validasi Otoritatif Produk & Harga dari Server Supabase
-    // Jangan pernah percaya harga atau total yang dikirim oleh browser!
-    const catalog = await fetchAuthoritativeProducts();
-    const catalogMap = new Map(catalog.map((p: any) => [p.id, p]));
-
-    let calculatedSubtotal = 0;
-    const validatedItems: OrderItem[] = [];
-
-    for (const item of items) {
-      const liveProduct = catalogMap.get(item.id) as any;
-      if (!liveProduct) {
-        return res.status(400).json({
-          success: false,
-          error: `Produk dengan ID "${item.id}" tidak ditemukan dalam katalog resmi toko.`,
-        });
-      }
-
-      if (liveProduct.availability === 'out of stock') {
-        return res.status(400).json({
-          success: false,
-          error: `Maaf, stok produk "${liveProduct.title}" saat ini telah habis.`,
-        });
-      }
-
-      const qty = parseInt(item.quantity, 10);
-      if (isNaN(qty) || qty <= 0) {
-        return res.status(400).json({
-          success: false,
-          error: `Kuantitas produk "${liveProduct.title}" harus lebih besar dari 0.`,
-        });
-      }
-
-      // Gunakan sale_price jika ada, jika tidak gunakan price
-      const authoritativeUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined
-        ? Number(liveProduct.sale_price)
-        : Number(liveProduct.price);
-
-      const itemSubtotal = authoritativeUnitPrice * qty;
-      calculatedSubtotal += itemSubtotal;
-
-      validatedItems.push({
-        id: crypto.randomUUID(),
-        product_id: liveProduct.id,
-        title: liveProduct.title,
-        unit_price: authoritativeUnitPrice,
-        quantity: qty,
-        subtotal: itemSubtotal,
-        image_link: liveProduct.display_image || liveProduct.image_link,
-      });
-    }
-
-    // C. Validasi Ongkos Kirim Otoritatif
-    const validCouriers: Record<string, { name: string; cost: number; etd: string }> = {
-      'jne_reg': { name: 'JNE Reguler', cost: 18000, etd: '2-3 Hari' },
-      'sicepat_reg': { name: 'SiCepat REG', cost: 16000, etd: '1-2 Hari' },
-      'jnt_reg': { name: 'J&T Express', cost: 17000, etd: '2-3 Hari' },
-      'gosend_sameday': { name: 'GoSend Same Day', cost: 25000, etd: '6-8 Jam' },
-      'pickup_store': { name: 'Ambil di Toko', cost: 0, etd: 'Hari ini' },
-    };
-
-    const courierCode = courier?.code || 'sicepat_reg';
-    const selectedCourier = validCouriers[courierCode] || validCouriers['sicepat_reg'];
-    const shippingCost = selectedCourier.cost;
-    const finalTotal = calculatedSubtotal + shippingCost;
-
-    // D. Buat Order ID & Access Token Unik
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomSuffix = Math.floor(10000 + Math.random() * 90000);
-    const orderNumber = `ORD-${dateStr}-${randomSuffix}`;
-    const accessToken = 'tok_' + crypto.randomBytes(24).toString('hex');
-    const orderId = crypto.randomUUID();
-
-    // E. Reservasi Stok Atomik
-    const reservationExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    reservationsDb.set(orderId, {
-      orderId,
-      orderNumber,
-      items: validatedItems.map((it) => ({ productId: it.product_id, quantity: it.quantity })),
-      status: 'reserved',
-      expiresAt: reservationExpiry,
+    const { recipient, items, courier } = req.body || {};
+    if (!recipient || !Array.isArray(items) || items.length === 0) return res.status(400).json({ success: false, error: 'Data checkout tidak lengkap.' });
+    // Supabase Edge Function is the single authoritative order/invoice creator.
+    const upstream = await fetch('https://mvwflakurihhakdrlteg.supabase.co/functions/v1/duitku-create-invoice', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient, items: items.map((item: any) => ({ id: item.id, quantity: item.quantity })),
+        courier: courier ? { code: courier.code, name: courier.name } : undefined }),
     });
-
-    // F. Duitku POP Create Invoice Request
-    const createInvoiceUrl = DUITKU_ENV === 'production'
-      ? 'https://api-prod.duitku.com/api/merchant/createInvoice'
-      : 'https://api-sandbox.duitku.com/api/merchant/createInvoice';
-
-    const timestamp = Date.now().toString();
-    // Formula resmi Duitku POP Create Invoice Header: SHA256(merchantCode + timestamp + apiKey)
-    const signature = crypto
-      .createHash('sha256')
-      .update(`${DUITKU_MERCHANT_CODE}${timestamp}${DUITKU_API_KEY}`)
-      .digest('hex');
-
-    const callbackUrl = `${APP_URL}/api/duitku-callback`;
-    const returnUrl = `${APP_URL}/orders/${orderNumber}?token=${accessToken}`;
-
-    const itemDetailsPayload = validatedItems.map((it) => ({
-      name: it.title.substring(0, 50),
-      price: it.unit_price,
-      quantity: it.quantity,
-    }));
-
-    if (shippingCost > 0) {
-      itemDetailsPayload.push({
-        name: `Ongkir - ${selectedCourier.name}`,
-        price: shippingCost,
-        quantity: 1,
-      });
+    const result = await upstream.json().catch(() => null);
+    if (!upstream.ok || result?.success !== true || typeof result?.orderNumber !== 'string' || !result.orderNumber ||
+        typeof result?.reference !== 'string' || !result.reference || typeof result?.accessToken !== 'string' || !result.accessToken) {
+      return res.status(upstream.ok ? 502 : upstream.status).json({ success: false,
+        error: typeof result?.error === 'string' ? result.error : 'Backend pembayaran belum mengonfirmasi invoice. Periksa status pesanan sebelum mencoba kembali.' });
     }
-
-    let reference = '';
-    let paymentUrl = '';
-    let isLiveDuitku = false;
-
-    // 1. Prioritaskan delegasi ke Supabase Edge Function (tempat Supabase Secret DUITKU dikonfigurasi)
-    const supabaseFnUrl = 'https://mvwflakurihhakdrlteg.supabase.co/functions/v1/duitku-create-invoice';
-
-    let delegatedToSupabase = false;
-    try {
-      const edgeRes = await fetch(supabaseFnUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipient,
-          items: validatedItems.map((it) => ({ id: it.product_id, quantity: it.quantity })),
-          courier: selectedCourier,
-        }),
-      });
-
-      if (edgeRes.ok) {
-        const edgeData = await edgeRes.json();
-        if (edgeData.reference) {
-          reference = edgeData.reference;
-          paymentUrl = edgeData.paymentUrl || '';
-          isLiveDuitku = true;
-          delegatedToSupabase = true;
-        }
-      }
-    } catch (err: any) {
-      // Edge function belum aktif atau network timeout, lanjut ke mekanisme berikutnya
-    }
-
-    // 2. Jika Edge function belum aktif dan ada env local, panggil Duitku langsung
-    if (!delegatedToSupabase && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-      try {
-        const duitkuPayload = {
-          paymentAmount: Math.round(finalTotal),
-          merchantOrderId: orderNumber,
-          productDetails: `Pesanan ${orderNumber} di Asri Collection`,
-          email: recipient.email.trim(),
-          phoneNumber: recipient.phone.trim(),
-          additionalParam: accessToken,
-          merchantUserInfo: recipient.name.trim(),
-          customerVaName: recipient.name.trim(),
-          callbackUrl,
-          returnUrl,
-          expiryPeriod: 60,
-          itemDetails: itemDetailsPayload,
-          customerDetail: {
-            firstName: recipient.name.split(' ')[0] || recipient.name,
-            lastName: recipient.name.split(' ').slice(1).join(' ') || '',
-            email: recipient.email.trim(),
-            phoneNumber: recipient.phone.trim(),
-            shippingAddress: {
-              firstName: recipient.name,
-              address: recipient.address,
-              city: recipient.city || 'Jakarta',
-              postalCode: recipient.postalCode || '12345',
-              phone: recipient.phone,
-              countryCode: 'ID',
-            },
-          },
-        };
-
-        const response = await fetch(createInvoiceUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-duitku-signature': signature,
-            'x-duitku-timestamp': timestamp,
-            'x-duitku-merchantcode': DUITKU_MERCHANT_CODE,
-          },
-          body: JSON.stringify(duitkuPayload),
-        });
-
-        const data = await response.json();
-        if (data.statusCode === '00' && data.reference) {
-          reference = data.reference;
-          paymentUrl = data.paymentUrl || '';
-          isLiveDuitku = true;
-        } else {
-          console.warn('Duitku API response error:', data);
-          throw new Error(data.statusMessage || 'Gagal membuat invoice di Duitku.');
-        }
-      } catch (err: any) {
-        console.warn('Fallback to Sandbox Simulator:', err.message);
-        reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-        paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
-      }
-    } else if (!delegatedToSupabase) {
-      // 3. Fallback seamless untuk preview dan sandbox testing di AI Studio tanpa perlu input secret
-      reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
-    }
-
-    // G. Simpan Order ke Database
-    const newOrder: Order = {
-      id: orderId,
-      order_number: orderNumber,
-      customer_name: recipient.name.trim(),
-      customer_email: recipient.email.trim(),
-      customer_phone: recipient.phone.trim(),
-      shipping_address: recipient.address.trim(),
-      shipping_city: recipient.city || '',
-      shipping_postal_code: recipient.postalCode || '',
-      subtotal: calculatedSubtotal,
-      shipping_cost: shippingCost,
-      discount_amount: 0,
-      total_amount: finalTotal,
-      payment_status: 'pending',
-      fulfillment_status: 'unfulfilled',
-      courier_name: selectedCourier.name,
-      tracking_number: '',
-      shipping_notes: recipient.notes || '',
-      access_token: accessToken,
-      duitku_reference: reference,
-      duitku_payment_url: paymentUrl,
-      items: validatedItems,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      audit_logs: [
-        {
-          action: 'ORDER_CREATED',
-          timestamp: new Date().toISOString(),
-          details: { subtotal: calculatedSubtotal, shippingCost, finalTotal, courier: selectedCourier.name },
-        },
-      ],
-    };
-
-    ordersDb.set(orderNumber, newOrder);
-
-    paymentsDb.set(orderNumber, {
-      orderId,
-      merchantOrderId: orderNumber,
-      reference,
-      amount: finalTotal,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    });
-
-    // Kembalikan HANYA informasi yang aman untuk client
-    res.json({
-      success: true,
-      orderId,
-      orderNumber,
-      accessToken,
-      reference,
-      paymentUrl,
-      totalAmount: finalTotal,
-      subtotal: calculatedSubtotal,
-      shippingCost,
-      isLiveDuitku,
-    });
-  } catch (err: any) {
-    console.error('Create Invoice Error:', err);
-    res.status(500).json({
-      success: false,
-      error: err.message || 'Terjadi kesalahan internal saat memproses invoice pesanan.',
-    });
+    return res.status(200).json(result);
+  } catch (_error) {
+    console.error('Invoice delegation failed.');
+    return res.status(502).json({ success: false, error: 'Backend pembayaran tidak dapat dijangkau. Periksa status pesanan sebelum mencoba kembali.' });
   }
 });
 
-// 4. POST /api/duitku-callback (Official Webhook Callback Handler)
-app.post('/api/duitku-callback', (req: Request, res: Response) => {
-  try {
-    const payload = req.body;
-    const {
-      merchantCode,
-      amount,
-      merchantOrderId,
-      signature,
-      resultCode,
-      reference,
-      paymentCode,
-      paymentMethod,
-    } = payload;
+// Legacy Express callback is disabled; Duitku must call the verified Supabase Edge Function.
+app.post('/api/duitku-callback', (_req: Request, res: Response) =>
+  res.status(410).send('Callback endpoint retired. Use the configured Supabase Duitku callback endpoint.'));
 
-    // A. Validasi Kelengkapan Parameter
-    if (!merchantCode || !amount || !merchantOrderId || !signature || !resultCode) {
-      console.warn('Callback missing required parameters:', payload);
-      return res.status(400).send('Bad Request: Parameter callback tidak lengkap.');
-    }
-
-    // B. Validasi Merchant Code
-    if (DUITKU_MERCHANT_CODE && merchantCode !== DUITKU_MERCHANT_CODE) {
-      console.warn(`Callback merchantCode mismatch: expected ${DUITKU_MERCHANT_CODE}, got ${merchantCode}`);
-      return res.status(401).send('Unauthorized: Merchant Code tidak cocok.');
-    }
-
-    // C. Validasi Signature Resmi Duitku:
-    // 1. Formula HMAC-SHA256: HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey)
-    const calculatedHmac = DUITKU_API_KEY
-      ? crypto.createHmac('sha256', DUITKU_API_KEY).update(`${merchantCode}${amount}${merchantOrderId}`).digest('hex')
-      : '';
-
-    // 2. Formula MD5: MD5(merchantCode + amount + merchantOrderId + apiKey)
-    const expectedRaw = `${merchantCode}${amount}${merchantOrderId}${DUITKU_API_KEY}`;
-    const calculatedSignature = crypto.createHash('md5').update(expectedRaw).digest('hex');
-
-    // 3. Formula SHA-256 fallback
-    const calculatedSha256 = crypto.createHash('sha256').update(expectedRaw).digest('hex');
-
-    const signatureMatches = DUITKU_API_KEY
-      ? signature.toLowerCase() === calculatedHmac.toLowerCase() ||
-        signature.toLowerCase() === calculatedSignature.toLowerCase() ||
-        signature.toLowerCase() === calculatedSha256.toLowerCase()
-      : true;
-
-    if (!signatureMatches) {
-      console.warn('Callback signature verification failed:', {
-        received: signature,
-        expectedMd5: calculatedSignature,
-      });
-      return res.status(401).send('Unauthorized: Signature tidak valid.');
-    }
-
-    // D. Cari Pesanan di Database
-    const order = ordersDb.get(merchantOrderId);
-    if (!order) {
-      console.warn(`Callback order not found: ${merchantOrderId}`);
-      return res.status(404).send('Not Found: Pesanan tidak ditemukan.');
-    }
-
-    // E. Validasi Nominal Pembayaran
-    const receivedAmount = parseFloat(amount);
-    if (Math.abs(receivedAmount - order.total_amount) > 0.01) {
-      order.audit_logs.push({
-        action: 'CALLBACK_AMOUNT_MISMATCH',
-        timestamp: new Date().toISOString(),
-        details: { expected: order.total_amount, received: receivedAmount },
-      });
-      return res.status(400).send('Conflict: Nominal pembayaran tidak cocok dengan total pesanan.');
-    }
-
-    // F. Idempotensi: Jika status sudah 'paid', jangan proses ulang stok
-    if (order.payment_status === 'paid') {
-      return res.status(200).send('SUCCESS');
-    }
-
-    // G. Terminal status protection: Jangan ubah pesanan 'cancelled' atau 'expired' kembali menjadi 'pending'
-    if (order.payment_status === 'cancelled' || order.payment_status === 'expired') {
-      return res.status(200).send('SUCCESS');
-    }
-
-    // H. Pemetaan Status Duitku: '00' = Sukses
-    const isSuccess = resultCode === '00';
-    order.payment_status = isSuccess ? 'paid' : 'failed';
-    order.updated_at = new Date().toISOString();
-
-    if (isSuccess && order.fulfillment_status === 'unfulfilled') {
-      order.fulfillment_status = 'processing';
-    }
-
-    // I. Catat Pembayaran & Audit
-    paymentsDb.set(merchantOrderId, {
-      orderId: order.id,
-      merchantOrderId,
-      reference: reference || order.duitku_reference,
-      amount: receivedAmount,
-      paymentMethod: paymentMethod || paymentCode || 'Duitku POP',
-      resultCode,
-      status: order.payment_status,
-      updatedAt: new Date().toISOString(),
-    });
-
-    order.audit_logs.push({
-      action: isSuccess ? 'PAYMENT_CONFIRMED' : 'PAYMENT_FAILED',
-      timestamp: new Date().toISOString(),
-      details: { amount: receivedAmount, resultCode, reference, paymentMethod },
-    });
-
-    // J. Commit / Release Reservasi Stok
-    const reservation = reservationsDb.get(order.id);
-    if (reservation) {
-      reservation.status = isSuccess ? 'committed' : 'released';
-    }
-
-    // Respons resmi Duitku harus 'SUCCESS' (HTTP 200)
-    return res.status(200).send('SUCCESS');
-  } catch (err: any) {
-    console.error('Callback error:', err);
-    return res.status(500).send(`Internal Server Error: ${err.message}`);
-  }
-});
-
-// Helper: Query Duitku official transactionStatus API as authoritative source of truth
-async function queryDuitkuTransactionStatus(orderNumber: string) {
-  if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY) return null;
-
-  const checkUrl = DUITKU_ENV === 'production'
-    ? 'https://api-prod.duitku.com/api/merchant/transactionStatus'
-    : 'https://api-sandbox.duitku.com/api/merchant/transactionStatus';
-
-  // Formula resmi Duitku transactionStatus: MD5(merchantCode + merchantOrderId + apiKey)
-  const signature = crypto
-    .createHash('md5')
-    .update(`${DUITKU_MERCHANT_CODE}${orderNumber}${DUITKU_API_KEY}`)
-    .digest('hex');
-
-  const payload = {
-    merchantCode: DUITKU_MERCHANT_CODE,
-    merchantOrderId: orderNumber,
-    signature,
-  };
-
-  try {
-    const res = await fetch(checkUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.warn('Error querying Duitku transactionStatus:', err);
-    return null;
-  }
-}
-
-// 5. GET /api/orders/:orderNumber (Customer Secure Order Lookup with auto Duitku sync)
 app.get('/api/orders/:orderNumber', async (req: Request, res: Response) => {
-  const { orderNumber } = req.params;
-  const token = req.query.token as string;
-  const phone = req.query.phone as string;
-  const email = req.query.email as string;
-
-  const order = ordersDb.get(orderNumber);
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
-  }
-
-  // Pengamanan Otorisasi: Verifikasi token ATAU no telepon / email pelanggan
-  const isAuthorized =
-    (token && token === order.access_token) ||
-    (phone && order.customer_phone.includes(phone.replace(/\D/g, ''))) ||
-    (email && order.customer_email.toLowerCase() === email.toLowerCase());
-
-  if (!isAuthorized) {
-    return res.status(403).json({
-      success: false,
-      error: 'Akses ditolak. Token akses tidak valid atau data verifikasi tidak cocok.',
+  const orderNumber = String(req.params.orderNumber || '');
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!token) return res.status(403).json({ success: false, error: 'Token akses pesanan diperlukan.' });
+  try {
+    const upstream = await fetch('https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-duitku-payment-status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber, token }),
     });
+    const result = await upstream.json().catch(() => null);
+    return res.status(upstream.status).json(result || { success: false, error: 'Status pesanan tidak tersedia.' });
+  } catch (_error) {
+    return res.status(502).json({ success: false, error: 'Backend status pesanan tidak dapat dijangkau.' });
   }
-
-  // Jika pesanan masih berstatus 'pending', tanyakan ke Duitku transactionStatus API (source of truth)
-  if (order.payment_status === 'pending' && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-    const duitkuStatus = await queryDuitkuTransactionStatus(order.order_number);
-    if (duitkuStatus) {
-      if (duitkuStatus.statusCode === '00') {
-        order.payment_status = 'paid';
-        if (order.fulfillment_status === 'unfulfilled') {
-          order.fulfillment_status = 'processing';
-        }
-        order.updated_at = new Date().toISOString();
-        order.audit_logs.push({
-          action: 'DUITKU_STATUS_SYNC_PAID',
-          timestamp: new Date().toISOString(),
-          details: duitkuStatus,
-        });
-        const resv = reservationsDb.get(order.id);
-        if (resv) resv.status = 'committed';
-      } else if (duitkuStatus.statusCode === '02') {
-        order.payment_status = 'failed';
-        order.updated_at = new Date().toISOString();
-        order.audit_logs.push({
-          action: 'DUITKU_STATUS_SYNC_FAILED',
-          timestamp: new Date().toISOString(),
-          details: duitkuStatus,
-        });
-        const resv = reservationsDb.get(order.id);
-        if (resv) resv.status = 'released';
-      }
-    }
-  }
-
-  // Sembunyikan token dari respons
-  const { access_token, ...safeOrder } = order;
-  res.json({ success: true, order: safeOrder });
 });
 
-// 5b. POST /api/duitku-check-status (Explicit status synchronization with Duitku)
 app.post('/api/duitku-check-status', async (req: Request, res: Response) => {
-  const { orderNumber, token } = req.body;
-  const order = ordersDb.get(orderNumber);
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
+  const { orderNumber, token } = req.body || {};
+  if (typeof orderNumber !== 'string' || typeof token !== 'string' || !token) return res.status(403).json({
+    success: false, error: 'Nomor pesanan dan token akses diperlukan.',
+  });
+  try {
+    const upstream = await fetch('https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-duitku-payment-status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber, token }),
+    });
+    const result = await upstream.json().catch(() => null);
+    return res.status(upstream.status).json(result || { success: false, error: 'Status pembayaran tidak tersedia.' });
+  } catch (_error) {
+    return res.status(502).json({ success: false, error: 'Backend status pembayaran tidak dapat dijangkau.' });
   }
-
-  if (token && token !== order.access_token) {
-    return res.status(403).json({ success: false, error: 'Akses ditolak.' });
-  }
-
-  if (DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-    const duitkuStatus = await queryDuitkuTransactionStatus(orderNumber);
-    if (duitkuStatus) {
-      if (duitkuStatus.statusCode === '00' && order.payment_status !== 'paid') {
-        order.payment_status = 'paid';
-        if (order.fulfillment_status === 'unfulfilled') {
-          order.fulfillment_status = 'processing';
-        }
-        order.updated_at = new Date().toISOString();
-        order.audit_logs.push({
-          action: 'DUITKU_MANUAL_SYNC_PAID',
-          timestamp: new Date().toISOString(),
-          details: duitkuStatus,
-        });
-        const resv = reservationsDb.get(order.id);
-        if (resv) resv.status = 'committed';
-      }
-      return res.json({ success: true, paymentStatus: order.payment_status, duitkuResponse: duitkuStatus });
-    }
-  }
-
-  return res.json({ success: true, paymentStatus: order.payment_status });
 });
 
-// 6. POST /api/orders/track (Guest Order Search with optional verification)
-app.post('/api/orders/track', (req: Request, res: Response) => {
-  const { orderNumber, phoneOrEmail } = req.body;
-  if (!orderNumber) {
-    return res.status(400).json({
-      success: false,
-      error: 'Harap masukkan nomor pesanan Anda.',
+app.post('/api/orders/track', async (req: Request, res: Response) => {
+  const orderNumber = typeof req.body?.orderNumber === 'string' ? req.body.orderNumber.trim() : '';
+  const phoneOrEmail = typeof req.body?.phoneOrEmail === 'string' ? req.body.phoneOrEmail.trim() : '';
+  if (!orderNumber || !phoneOrEmail) return res.status(400).json({
+    success: false, error: 'Nomor pesanan serta email atau nomor telepon diperlukan.',
+  });
+  const verification = phoneOrEmail.includes('@') ? { email: phoneOrEmail.toLowerCase() } : { phone: phoneOrEmail };
+  try {
+    const upstream = await fetch('https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-duitku-payment-status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderNumber, ...verification }),
     });
+    const result = await upstream.json().catch(() => null);
+    return res.status(upstream.status).json(result || { success: false, error: 'Status pesanan tidak tersedia.' });
+  } catch (_error) {
+    return res.status(502).json({ success: false, error: 'Backend status pesanan tidak dapat dijangkau.' });
   }
-
-  const order = ordersDb.get(orderNumber.trim().toUpperCase());
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan dengan nomor tersebut tidak ditemukan.' });
-  }
-
-  // Jika pelanggan menyertakan phoneOrEmail, validasi kecocokannya
-  if (phoneOrEmail && phoneOrEmail.trim()) {
-    const cleanInput = phoneOrEmail.trim().toLowerCase();
-    const phoneClean = cleanInput.replace(/\D/g, '');
-    const orderPhoneClean = order.customer_phone.replace(/\D/g, '');
-
-    const matches =
-      order.customer_email.toLowerCase() === cleanInput ||
-      (phoneClean.length >= 8 && orderPhoneClean.includes(phoneClean));
-
-    if (!matches) {
-      return res.status(403).json({
-        success: false,
-        error: 'Nomor pesanan cocok, tetapi nomor telepon/email yang dimasukkan tidak sesuai.',
-      });
-    }
-  }
-
-  const { access_token, ...safeOrder } = order;
-  res.json({ success: true, order: safeOrder, accessToken: order.access_token });
 });
 
 // 7. ADMIN AUTH MIDDLEWARE
@@ -879,6 +366,11 @@ app.patch('/api/admin/orders/:orderNumber/shipping', adminAuth, (req: Request, r
 
 // 11. POST /api/test/simulate-callback (Interactive Sandbox Test Tool)
 app.post('/api/test/simulate-callback', (req: Request, res: Response) => {
+  if (process.env.NODE_ENV === 'production' || process.env.ENABLE_PAYMENT_SIMULATOR !== 'true') {
+    return res.status(404).json({ success: false, error: 'Not Found' });
+  }
+  return res.status(410).json({ success: false, error: 'Simulasi callback lama dinonaktifkan.' });
+
   const { orderNumber, scenario, customAmount, tamperedSignature } = req.body;
   const order = ordersDb.get(orderNumber);
 
