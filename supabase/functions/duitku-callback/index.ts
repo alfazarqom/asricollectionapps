@@ -6,15 +6,6 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
-// Helper: MD5 hex digest
-async function md5Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 // Helper: HMAC-SHA256 hex digest
 async function hmacSha256Hex(key: string, data: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -43,6 +34,11 @@ serve(async (req: Request) => {
     const DUITKU_API_KEY = Deno.env.get("DUITKU_API_KEY") || "";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("Duitku callback unavailable: required server configuration is missing.");
+      return new Response("Callback temporarily unavailable", { status: 503 });
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -77,22 +73,14 @@ serve(async (req: Request) => {
     }
 
     // 2. Validasi Merchant Code
-    if (DUITKU_MERCHANT_CODE && merchantCode !== DUITKU_MERCHANT_CODE) {
+    if (merchantCode !== DUITKU_MERCHANT_CODE) {
       return new Response("Unauthorized: Merchant Code tidak cocok", { status: 401 });
     }
 
-    // 3. Dual Signature Verification (HMAC-SHA256 & MD5)
-    // Formula 1: HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey)
+    // Official POP callback signature: HMAC_SHA256(merchantCode + amount + merchantOrderId, API key).
     const hmacString = `${merchantCode}${amount}${merchantOrderId}`;
-    const expectedHmac = DUITKU_API_KEY ? await hmacSha256Hex(DUITKU_API_KEY, hmacString) : "";
-
-    // Formula 2: MD5(merchantCode + amount + merchantOrderId + apiKey)
-    const md5String = `${merchantCode}${amount}${merchantOrderId}${DUITKU_API_KEY}`;
-    const expectedMd5 = DUITKU_API_KEY ? await md5Hex(md5String) : "";
-
-    const isValidSignature = !DUITKU_API_KEY || 
-      signature.toLowerCase() === expectedHmac.toLowerCase() || 
-      signature.toLowerCase() === expectedMd5.toLowerCase();
+    const expectedHmac = await hmacSha256Hex(DUITKU_API_KEY, hmacString);
+    const signatureMatches = signature.toLowerCase() === expectedHmac.toLowerCase();
 
     // Catat ke tabel callback_events untuk audit trail
     await supabase.from("callback_events").insert({
@@ -100,14 +88,12 @@ serve(async (req: Request) => {
       reference,
       amount: parseFloat(amount),
       result_code: resultCode,
-      signature,
-      is_valid_signature: isValidSignature,
-      verification_method: signature.toLowerCase() === expectedHmac.toLowerCase() ? "HMAC-SHA256" : "MD5",
-      raw_payload: payload,
-      error_message: isValidSignature ? null : "Invalid callback signature",
+      is_valid_signature: signatureMatches,
+      verification_method: "HMAC-SHA256",
+      error_message: signatureMatches ? null : "Invalid callback signature",
     });
 
-    if (!isValidSignature) {
+    if (!signatureMatches) {
       return new Response("Unauthorized: Signature callback tidak valid", { status: 401 });
     }
 
@@ -122,42 +108,9 @@ serve(async (req: Request) => {
     });
 
     if (spError) {
-      // Fallback update jika stored procedure belum dimigrasi
-      const { data: order, error: orderErr } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("order_number", merchantOrderId)
-        .single();
-
-      if (orderErr || !order) {
-        return new Response("Not Found: Pesanan tidak ditemukan", { status: 404 });
-      }
-
-      if (Math.abs(parseFloat(amount) - parseFloat(order.total_amount)) > 0.01) {
-        return new Response("Conflict: Nominal pembayaran tidak cocok", { status: 400 });
-      }
-
-      if (order.payment_status === "paid") {
-        return new Response("SUCCESS", { status: 200, headers: { "Content-Type": "text/plain" } });
-      }
-
-      const isSuccess = resultCode === "00";
-      const newStatus = isSuccess ? "paid" : "failed";
-
-      await supabase
-        .from("orders")
-        .update({
-          payment_status: newStatus,
-          fulfillment_status: isSuccess && order.fulfillment_status === "unfulfilled" ? "processing" : order.fulfillment_status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", order.id);
-
-      if (isSuccess) {
-        await supabase.rpc("commit_inventory_atomic", { p_order_id: order.id });
-      }
-
-      return new Response("SUCCESS", { status: 200, headers: { "Content-Type": "text/plain" } });
+      // Never bypass the atomic payment/inventory transaction. Returning 5xx allows provider retry.
+      console.error("Duitku callback atomic processing failed; provider retry is required.");
+      return new Response("Callback processing failed; retry required", { status: 500 });
     }
 
     if (!spResult?.success) {
