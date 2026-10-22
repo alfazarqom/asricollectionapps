@@ -311,27 +311,64 @@ serve(async (req: Request) => {
     let reference = "";
     let paymentUrl = "";
 
-    const duitkuResponse = await fetch(createInvoiceUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-duitku-signature": signature,
-        "x-duitku-timestamp": timestamp,
-        "x-duitku-merchantcode": DUITKU_MERCHANT_CODE,
-      },
-      body: JSON.stringify(duitkuPayload),
-    });
+    let duitkuResponse: Response;
+    try {
+      duitkuResponse = await fetch(createInvoiceUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-duitku-signature": signature,
+          "x-duitku-timestamp": timestamp,
+          "x-duitku-merchantcode": DUITKU_MERCHANT_CODE,
+        },
+        body: JSON.stringify(duitkuPayload),
+      });
+    } catch (_error) {
+      // The provider may have received the request even if the response timed out.
+      // Keep the order/reservation pending for manual reconciliation; do not retry automatically.
+      console.error("Duitku invoice request outcome is unknown; manual reconciliation is required.");
+      return new Response(JSON.stringify({
+        error: "Hasil permintaan invoice belum dapat dipastikan. Jangan ulangi pembayaran; hubungi admin untuk rekonsiliasi.",
+        orderNumber,
+      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     let duitkuResult: any;
     try {
       duitkuResult = await duitkuResponse.json();
     } catch (_error) {
-      throw new Error(`Duitku returned a non-JSON response (HTTP ${duitkuResponse.status}).`);
+      console.error("Duitku returned a non-JSON response; order remains pending for reconciliation.");
+      return new Response(JSON.stringify({
+        error: "Respons Duitku tidak dapat diverifikasi. Jangan ulangi pembayaran; hubungi admin untuk rekonsiliasi.",
+        orderNumber,
+      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    if (!duitkuResponse.ok || duitkuResult?.statusCode !== "00" || !duitkuResult?.reference || !duitkuResult?.paymentUrl) {
-      console.error("Duitku invoice request failed:", { httpStatus: duitkuResponse.status, statusCode: duitkuResult?.statusCode });
-      throw new Error("Duitku gagal membuat invoice. Silakan coba lagi.");
+    if (!duitkuResponse.ok || duitkuResult?.statusCode !== "00") {
+      console.error("Duitku explicitly rejected invoice creation:", { httpStatus: duitkuResponse.status, statusCode: duitkuResult?.statusCode });
+      const { error: orderFailError } = await supabase
+        .from("orders")
+        .update({ payment_status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+      const { error: releaseError } = await supabase
+        .from("inventory_reservations")
+        .update({ status: "released" })
+        .eq("order_id", orderId)
+        .eq("status", "reserved");
+      if (orderFailError || releaseError) {
+        console.error("Failed to finalize rejected invoice cleanup:", orderFailError?.message || releaseError?.message);
+      }
+      return new Response(JSON.stringify({ error: "Duitku menolak pembuatan invoice. Pesanan ditandai gagal." }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!duitkuResult?.reference || !duitkuResult?.paymentUrl) {
+      console.error("Duitku returned success without a reference/payment URL; order remains pending for reconciliation.");
+      return new Response(JSON.stringify({
+        error: "Respons sukses Duitku tidak lengkap. Jangan ulangi pembayaran; hubungi admin untuk rekonsiliasi.",
+        orderNumber,
+      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     reference = String(duitkuResult.reference);
     paymentUrl = String(duitkuResult.paymentUrl);
