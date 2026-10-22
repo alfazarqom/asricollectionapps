@@ -151,8 +151,9 @@ Status berikut mengacu pada audit repository dan patch hardening, bukan sertifik
 - **Implemented in repository:** callback Express yang menggunakan store in-memory tidak lagi mengonfirmasi pembayaran; endpoint tersebut merespons HTTP 503. Callback kanonis berada pada Edge Function.
 - **Implemented in repository:** PIN admin default dan simulator callback aplikasi dihapus; autentikasi admin Express memerlukan secret yang dikonfigurasi server-side.
 - **Read-only by design:** endpoint status pesanan tidak mengubah status pembayaran dari hasil inquiry provider. Kontrak endpoint status POP perlu dikonfirmasi sebelum rekonsiliasi otomatis diaktifkan.
-- **Not production-ready until resolved:** `server.ts` masih menyimpan pesanan lokal dalam memori; skema stok dan fungsi reservasi perlu direkonsiliasi; penulisan pesanan, item, reservasi, dan invoice belum menjadi satu transaksi database atomik.
-- **Not yet verified:** build, lint, pengujian callback, pengujian idempotensi, tes E2E, dan transaksi Duitku Sandbox. Jalankan dan catat hasil aktual sebelum menyatakan PASS.
+- **Not production-ready until resolved:** `server.ts` masih memiliki endpoint admin/tracking lokal berbasis `Map`; order baru dari checkout tidak mengisi Map tersebut. Endpoint admin lokal tidak boleh dipakai untuk mengelola pesanan. Skema stok dan fungsi reservasi perlu direkonsiliasi; penulisan pesanan, item, reservasi, dan invoice belum menjadi satu transaksi database atomik.
+- **Verified in GitHub Actions:** `bun test`, `bun run lint`, dan `bun run build` lulus pada branch `fix/repo-audit-hardening` (commit `a97a0378e334dc1ddc9991e41a651c1ab67c2473`).
+- **Not yet verified:** callback end-to-end, idempotensi terhadap database aktif, perilaku RPC saat gagal, tes E2E checkout, serta transaksi Duitku Sandbox. Tidak ada transaksi nyata atau Sandbox yang dijalankan.
 - **Not changed:** database aktif, migration, Supabase Secrets, Edge Function deployment, konfigurasi deployment aktif, dan branch `main`.
 
 ## Dokumentasi source of truth
