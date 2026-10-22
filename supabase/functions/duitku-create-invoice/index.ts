@@ -71,8 +71,8 @@ serve(async (req: Request) => {
     // 1. Validasi Input Penerima
     if (
       typeof recipient?.name !== "string" || !recipient.name.trim() ||
-      typeof recipient?.phone !== "string" || recipient.phone.replace(/\\D/g, "").length < 8 ||
-      typeof recipient?.email !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(recipient.email.trim()) ||
+      typeof recipient?.phone !== "string" || recipient.phone.replace(/\D/g, "").length < 8 ||
+      typeof recipient?.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email.trim()) ||
       typeof recipient?.address !== "string" || !recipient.address.trim()
     ) {
       return new Response(
