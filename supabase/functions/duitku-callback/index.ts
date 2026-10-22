@@ -31,11 +31,11 @@ serve(async (req: Request) => {
 
   try {
     const DUITKU_MERCHANT_CODE = Deno.env.get("DUITKU_MERCHANT_CODE") || "";
-    const DUITKU_API_KEY = Deno.env.get("DUITKU_API_KEY") || "";
+    const DUITKU_MERCHANT_KEY = Deno.env.get("DUITKU_MERCHANT_KEY") || "";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_MERCHANT_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       console.error("Callback configuration is incomplete; refusing to process payment notification.");
       return new Response("Service Unavailable: callback configuration incomplete", { status: 503 });
     }
@@ -87,13 +87,13 @@ serve(async (req: Request) => {
       return new Response("Bad Request: Nominal pembayaran tidak valid", { status: 400 });
     }
 
-    // Duitku POP callback signature: HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey).
+    // Duitku POP callback signature: HMAC_SHA256(merchantCode + amount + merchantOrderId, merchantKey).
     if (merchantCode !== DUITKU_MERCHANT_CODE) {
       return new Response("Unauthorized: Merchant Code tidak cocok", { status: 401 });
     }
 
     const stringToSign = `${merchantCode}${normalizedAmount}${merchantOrderId}`;
-    const expectedHmac = await hmacSha256Hex(DUITKU_API_KEY, stringToSign);
+    const expectedHmac = await hmacSha256Hex(DUITKU_MERCHANT_KEY, stringToSign);
     const isValidSignature = signature.toLowerCase() === expectedHmac.toLowerCase();
 
     // Catat ke tabel callback_events untuk audit trail
