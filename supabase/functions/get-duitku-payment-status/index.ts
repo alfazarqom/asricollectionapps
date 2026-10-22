@@ -12,13 +12,19 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-// Helper: MD5 hex digest
-async function md5Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+// Duitku transactionStatus signature: HMAC_SHA256(merchantCode + merchantOrderId, apiKey).
+async function hmacSha256Hex(key: string, data: string): Promise<string> {
+  const keyBytes = new TextEncoder().encode(key);
+  const dataBytes = new TextEncoder().encode(data);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, dataBytes);
+  return Array.from(new Uint8Array(signature)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 serve(async (req: Request) => {
@@ -32,6 +38,17 @@ serve(async (req: Request) => {
     const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(JSON.stringify({ error: "Payment status service is not configured." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!["sandbox", "production"].includes(DUITKU_ENV)) {
+      return new Response(JSON.stringify({ error: "Invalid payment environment configuration." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -50,6 +67,10 @@ serve(async (req: Request) => {
       } catch (_e) {
         // Body might be empty or url-encoded
       }
+    }
+
+    if (!["GET", "POST"].includes(req.method)) {
+      return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
     }
 
     if (!orderNumber || !orderNumber.trim()) {
@@ -75,22 +96,22 @@ serve(async (req: Request) => {
       });
     }
 
-    // 2. Otorisasi Kepemilikan: Jika token akses disertakan, validasi kecocokannya
-    if (accessToken && order.access_token && order.access_token !== accessToken) {
+    // Order details are private: a valid access token is mandatory, not optional.
+    if (!accessToken || typeof order.access_token !== "string" || order.access_token !== accessToken) {
       return new Response(JSON.stringify({ error: "Akses ditolak. Token akses tidak valid." }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 3. Rekonsiliasi Otomatis dengan Duitku TransactionStatus API jika masih pending
-    if (order.payment_status === "pending" && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
+    // 3. Read-only provider inquiry. Callback/RPC remains the only payment-state writer.
+    // Duitku API documentation: HMAC_SHA256(merchantCode + merchantOrderId, apiKey).
+    let providerStatus: { statusCode: string; statusMessage?: string; amount?: string; reference?: string } | null = null;
+    if (order.payment_status === "pending") {
       const checkUrl = DUITKU_ENV === "production"
         ? "https://api-prod.duitku.com/api/merchant/transactionStatus"
         : "https://api-sandbox.duitku.com/api/merchant/transactionStatus";
-
-      // Formula: MD5(merchantCode + merchantOrderId + apiKey)
-      const signature = await md5Hex(DUITKU_MERCHANT_CODE + cleanOrderNumber + DUITKU_API_KEY);
+      const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + cleanOrderNumber);
 
       try {
         const duitkuRes = await fetch(checkUrl, {
@@ -102,39 +123,28 @@ serve(async (req: Request) => {
             signature,
           }),
         });
-
         if (duitkuRes.ok) {
-          const duitkuStatus = await duitkuRes.json();
-          if (duitkuStatus.statusCode === "00") {
-            // Perbarui status menjadi paid
-            order.payment_status = "paid";
-            if (order.fulfillment_status === "unfulfilled") {
-              order.fulfillment_status = "processing";
-            }
-            await supabase
-              .from("orders")
-              .update({
-                payment_status: "paid",
-                fulfillment_status: order.fulfillment_status,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", order.id);
-
-            try {
-              await supabase.rpc("commit_inventory_atomic", { p_order_id: order.id });
-            } catch (_rpcErr) {
-              // RPC non-critical here
-            }
-          } else if (duitkuStatus.statusCode === "02") {
-            order.payment_status = "failed";
-            await supabase
-              .from("orders")
-              .update({ payment_status: "failed", updated_at: new Date().toISOString() })
-              .eq("id", order.id);
+          const result = await duitkuRes.json();
+          if (
+            result?.merchantOrderId === cleanOrderNumber &&
+            result?.amount !== undefined &&
+            Math.abs(Number(result.amount) - Number(order.total_amount)) < 0.01 &&
+            ["00", "01", "02"].includes(String(result.statusCode))
+          ) {
+            providerStatus = {
+              statusCode: String(result.statusCode),
+              statusMessage: typeof result.statusMessage === "string" ? result.statusMessage : undefined,
+              amount: String(result.amount),
+              reference: typeof result.reference === "string" ? result.reference : undefined,
+            };
+          } else {
+            console.error("Duitku status response did not match order identity or amount.");
           }
+        } else {
+          console.warn("Duitku transaction status request returned HTTP", duitkuRes.status);
         }
       } catch (e) {
-        console.warn("Duitku status check error:", e);
+        console.warn("Duitku status inquiry failed:", e);
       }
     }
 
@@ -148,13 +158,14 @@ serve(async (req: Request) => {
         order: safeOrder,
         paymentStatus: safeOrder.payment_status,
         fulfillmentStatus: safeOrder.fulfillment_status,
+        providerStatus,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
-    console.error("Error in get-duitku-payment-status:", err);
+    console.error("Error in get-duitku-payment-status:", err?.message || "unknown error");
     return new Response(
-      JSON.stringify({ error: err.message || "Gagal memproses pengecekan status pesanan." }),
+      JSON.stringify({ error: "Gagal memproses pengecekan status pesanan." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
