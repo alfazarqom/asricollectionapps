@@ -116,9 +116,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
         const oData = await oRes.json();
         if (oData.success) {
           setOrders(oData.data);
-          if (oData.data.length > 0 && !simOrderNumber) {
-            setSimOrderNumber(oData.data[0].order_number);
-          }
         }
       }
     } catch (e) {
