@@ -4,24 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
-
-// Helper: HMAC-SHA256 hex digest
-async function hmacSha256Hex(key: string, data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyBuffer = encoder.encode(key);
-  const dataBuffer = encoder.encode(data);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyBuffer,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, dataBuffer);
-  const hashArray = Array.from(new Uint8Array(signatureBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+import { hmacSha256Hex, isValidDuitkuCallbackAmount } from "../_shared/duitku-pop.ts";
 
 serve(async (req: Request) => {
   // Hanya menerima metode POST
@@ -83,7 +66,7 @@ serve(async (req: Request) => {
     }
 
     const normalizedAmount = String(amount).trim();
-    if (!/^\\d+(?:\\.\\d{1,2})?$/.test(normalizedAmount)) {
+    if (!isValidDuitkuCallbackAmount(normalizedAmount)) {
       return new Response("Bad Request: Nominal pembayaran tidak valid", { status: 400 });
     }
 
