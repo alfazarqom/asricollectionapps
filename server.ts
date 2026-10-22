@@ -18,7 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 const DUITKU_MERCHANT_CODE = process.env.DUITKU_MERCHANT_CODE || '';
 const DUITKU_API_KEY = process.env.DUITKU_API_KEY || '';
 const DUITKU_ENV = process.env.DUITKU_ENV || 'sandbox';
-const ADMIN_SECRET_PIN = process.env.ADMIN_SECRET_PIN || '123456';
+const ADMIN_SECRET_PIN = process.env.ADMIN_SECRET_PIN || '';
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 
 // In-Memory Database Store for live execution & persistence in applet
@@ -62,51 +62,6 @@ interface Order {
 const ordersDb = new Map<string, Order>();
 const paymentsDb = new Map<string, any>();
 const reservationsDb = new Map<string, any>();
-
-// Seed sample orders for immediate demonstration in admin and tracking
-const seedSampleData = () => {
-  const sampleOrder: Order = {
-    id: crypto.randomUUID(),
-    order_number: 'ORD-20261009-88123',
-    customer_name: 'Budi Santoso',
-    customer_email: 'budi.santoso@example.com',
-    customer_phone: '081298765432',
-    shipping_address: 'Jl. Sudirman No. 45, RT 02/RW 04',
-    shipping_city: 'Jakarta Selatan',
-    shipping_postal_code: '12190',
-    subtotal: 275000,
-    shipping_cost: 16000,
-    discount_amount: 0,
-    total_amount: 291000,
-    payment_status: 'paid',
-    fulfillment_status: 'processing',
-    courier_name: 'SiCepat REG',
-    tracking_number: '003418293812',
-    shipping_notes: 'Titipkan ke satpam jika rumah kosong',
-    access_token: 'tok-seed-sample-budi88123',
-    duitku_reference: 'DS-20261009-1001',
-    duitku_payment_url: '',
-    items: [
-      {
-        id: crypto.randomUUID(),
-        product_id: 'APP-003',
-        title: 'Hoodie Fleece Unisex',
-        unit_price: 275000,
-        quantity: 1,
-        subtotal: 275000,
-        image_link: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600&auto=format&fit=crop&q=80',
-      },
-    ],
-    created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-    updated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    audit_logs: [
-      { action: 'ORDER_CREATED', timestamp: new Date(Date.now() - 3600000 * 4).toISOString(), details: {} },
-      { action: 'PAYMENT_CONFIRMED', timestamp: new Date(Date.now() - 3600000 * 3).toISOString(), details: { amount: 291000, resultCode: '00' } },
-    ],
-  };
-  ordersDb.set(sampleOrder.order_number, sampleOrder);
-};
-seedSampleData();
 
 // Fetch the authoritative product catalog from Supabase.
 // Never substitute local/sample products when the source is empty or unavailable.
@@ -152,11 +107,9 @@ app.get('/api/products', async (req: Request, res: Response) => {
 // 2. GET /api/config-status
 app.get('/api/config-status', (_req: Request, res: Response) => {
   res.json({
-    duitkuConfigured: true,
-    supabaseSecrets: true,
-    merchantCode: DUITKU_MERCHANT_CODE ? `${DUITKU_MERCHANT_CODE.substring(0, 3)}***` : 'Tersimpan di Supabase Secret',
+    duitkuConfigured: Boolean(DUITKU_MERCHANT_CODE && DUITKU_API_KEY),
+    adminAuthConfigured: Boolean(ADMIN_SECRET_PIN),
     env: DUITKU_ENV,
-    appUrl: APP_URL,
     callbackUrl: `${APP_URL}/api/duitku-callback`,
   });
 });
@@ -165,6 +118,14 @@ app.get('/api/config-status', (_req: Request, res: Response) => {
 app.post('/api/create-invoice', async (req: Request, res: Response) => {
   try {
     const { recipient, items, courier } = req.body;
+
+    // Do not create invoices with local-only callback URLs or missing provider configuration.
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !/^https:\/\//i.test(APP_URL) || /localhost|127\.0\.0\.1/i.test(APP_URL)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Layanan pembayaran belum dikonfigurasi dengan URL callback publik HTTPS.',
+      });
+    }
 
     // A. Validasi Data Penerima
     if (!recipient?.name || !recipient?.phone || !recipient?.email || !recipient?.address) {
@@ -256,26 +217,16 @@ app.post('/api/create-invoice', async (req: Request, res: Response) => {
     const accessToken = 'tok_' + crypto.randomBytes(24).toString('hex');
     const orderId = crypto.randomUUID();
 
-    // E. Reservasi Stok Atomik
-    const reservationExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    reservationsDb.set(orderId, {
-      orderId,
-      orderNumber,
-      items: validatedItems.map((it) => ({ productId: it.product_id, quantity: it.quantity })),
-      status: 'reserved',
-      expiresAt: reservationExpiry,
-    });
-
     // F. Duitku POP Create Invoice Request
     const createInvoiceUrl = DUITKU_ENV === 'production'
       ? 'https://api-prod.duitku.com/api/merchant/createInvoice'
       : 'https://api-sandbox.duitku.com/api/merchant/createInvoice';
 
     const timestamp = Date.now().toString();
-    // Formula resmi Duitku POP Create Invoice Header: SHA256(merchantCode + timestamp + apiKey)
+    // Official Duitku POP formula: HMAC_SHA256(merchantCode + timestamp, apiKey).
     const signature = crypto
-      .createHash('sha256')
-      .update(`${DUITKU_MERCHANT_CODE}${timestamp}${DUITKU_API_KEY}`)
+      .createHmac('sha256', DUITKU_API_KEY)
+      .update(`${DUITKU_MERCHANT_CODE}${timestamp}`)
       .digest('hex');
 
     const callbackUrl = `${APP_URL}/api/duitku-callback`;
@@ -326,10 +277,10 @@ app.post('/api/create-invoice', async (req: Request, res: Response) => {
         }
       }
     } catch (err: any) {
-      // Edge function belum aktif atau network timeout, lanjut ke mekanisme berikutnya
+      console.warn('Supabase invoice function request failed:', err?.message || 'network error');
     }
 
-    // 2. Jika Edge function belum aktif dan ada env local, panggil Duitku langsung
+    // Do not silently switch providers or fabricate a payment URL if the canonical function fails.
     if (!delegatedToSupabase && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
       try {
         const duitkuPayload = {
@@ -373,26 +324,37 @@ app.post('/api/create-invoice', async (req: Request, res: Response) => {
         });
 
         const data = await response.json();
-        if (data.statusCode === '00' && data.reference) {
+        if (response.ok && data.statusCode === '00' && data.reference && data.paymentUrl && /^https:\/\//i.test(data.paymentUrl)) {
           reference = data.reference;
-          paymentUrl = data.paymentUrl || '';
+          paymentUrl = data.paymentUrl;
           isLiveDuitku = true;
         } else {
           console.warn('Duitku API response error:', data);
           throw new Error(data.statusMessage || 'Gagal membuat invoice di Duitku.');
         }
       } catch (err: any) {
-        console.warn('Fallback to Sandbox Simulator:', err.message);
-        reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-        paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
+        console.error('Duitku invoice request failed:', err?.message || 'unknown error');
+        throw new Error('Duitku gagal membuat invoice. Silakan coba lagi.');
       }
     } else if (!delegatedToSupabase) {
-      // 3. Fallback seamless untuk preview dan sandbox testing di AI Studio tanpa perlu input secret
-      reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
+      throw new Error('Layanan invoice Supabase tidak tersedia dan kredensial Duitku lokal tidak dikonfigurasi.');
     }
 
-    // G. Simpan Order ke Database
+    if (!paymentUrl || !/^https:\/\//i.test(paymentUrl)) {
+      throw new Error('Duitku tidak mengembalikan URL pembayaran HTTPS yang valid.');
+    }
+
+    // Reserve locally only after a real payment URL has been returned.
+    const reservationExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    reservationsDb.set(orderId, {
+      orderId,
+      orderNumber,
+      items: validatedItems.map((it) => ({ productId: it.product_id, quantity: it.quantity })),
+      status: 'reserved',
+      expiresAt: reservationExpiry,
+    });
+
+    // G. Save local order record (in-memory only; not a production database).
     const newOrder: Order = {
       id: orderId,
       order_number: orderNumber,
@@ -474,42 +436,28 @@ app.post('/api/duitku-callback', (req: Request, res: Response) => {
       paymentMethod,
     } = payload;
 
-    // A. Validasi Kelengkapan Parameter
-    if (!merchantCode || !amount || !merchantOrderId || !signature || !resultCode) {
-      console.warn('Callback missing required parameters:', payload);
-      return res.status(400).send('Bad Request: Parameter callback tidak lengkap.');
+    // A. Require configured credentials and validate the official POP HMAC signature.
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY) {
+      return res.status(503).send('Service Unavailable: callback configuration incomplete.');
     }
-
-    // B. Validasi Merchant Code
-    if (DUITKU_MERCHANT_CODE && merchantCode !== DUITKU_MERCHANT_CODE) {
-      console.warn(`Callback merchantCode mismatch: expected ${DUITKU_MERCHANT_CODE}, got ${merchantCode}`);
+    if (
+      !merchantCode || !amount || !merchantOrderId || !signature || !resultCode ||
+      !/^\\d+(?:\\.\\d{1,2})?$/.test(String(amount)) ||
+      !['00', '01'].includes(String(resultCode))
+    ) {
+      return res.status(400).send('Bad Request: Parameter callback tidak lengkap atau tidak valid.');
+    }
+    if (merchantCode !== DUITKU_MERCHANT_CODE) {
       return res.status(401).send('Unauthorized: Merchant Code tidak cocok.');
     }
 
-    // C. Validasi Signature Resmi Duitku:
-    // 1. Formula HMAC-SHA256: HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey)
-    const calculatedHmac = DUITKU_API_KEY
-      ? crypto.createHmac('sha256', DUITKU_API_KEY).update(`${merchantCode}${amount}${merchantOrderId}`).digest('hex')
-      : '';
-
-    // 2. Formula MD5: MD5(merchantCode + amount + merchantOrderId + apiKey)
-    const expectedRaw = `${merchantCode}${amount}${merchantOrderId}${DUITKU_API_KEY}`;
-    const calculatedSignature = crypto.createHash('md5').update(expectedRaw).digest('hex');
-
-    // 3. Formula SHA-256 fallback
-    const calculatedSha256 = crypto.createHash('sha256').update(expectedRaw).digest('hex');
-
-    const signatureMatches = DUITKU_API_KEY
-      ? signature.toLowerCase() === calculatedHmac.toLowerCase() ||
-        signature.toLowerCase() === calculatedSignature.toLowerCase() ||
-        signature.toLowerCase() === calculatedSha256.toLowerCase()
-      : true;
-
-    if (!signatureMatches) {
-      console.warn('Callback signature verification failed:', {
-        received: signature,
-        expectedMd5: calculatedSignature,
-      });
+    const receivedAmount = Number(amount);
+    const calculatedHmac = crypto
+      .createHmac('sha256', DUITKU_API_KEY)
+      .update(`${merchantCode}${String(amount)}${merchantOrderId}`)
+      .digest('hex');
+    if (typeof signature !== 'string' || signature.toLowerCase() !== calculatedHmac.toLowerCase()) {
+      console.warn('Duitku callback signature verification failed.');
       return res.status(401).send('Unauthorized: Signature tidak valid.');
     }
 
@@ -521,7 +469,6 @@ app.post('/api/duitku-callback', (req: Request, res: Response) => {
     }
 
     // E. Validasi Nominal Pembayaran
-    const receivedAmount = parseFloat(amount);
     if (Math.abs(receivedAmount - order.total_amount) > 0.01) {
       order.audit_logs.push({
         action: 'CALLBACK_AMOUNT_MISMATCH',
@@ -751,12 +698,29 @@ app.post('/api/orders/track', (req: Request, res: Response) => {
   res.json({ success: true, order: safeOrder, accessToken: order.access_token });
 });
 
-// 7. ADMIN AUTH MIDDLEWARE
-const adminAuth = (req: Request, res: Response, next: () => void) => {
-  const pin = req.headers['x-admin-pin'] as string;
-  if (!pin || pin !== ADMIN_SECRET_PIN) {
-    return res.status(401).json({ success: false, error: 'Otorisasi Admin ditolak. PIN salah.' });
+// Admin authentication is disabled until an explicit server-side secret is configured.
+app.post('/api/admin/auth', (req: Request, res: Response) => {
+  if (!ADMIN_SECRET_PIN) {
+    return res.status(503).json({ success: false, error: 'Autentikasi admin belum dikonfigurasi di server.' });
   }
+  const pin = typeof req.body?.pin === 'string' ? req.body.pin : '';
+  const expected = Buffer.from(ADMIN_SECRET_PIN);
+  const received = Buffer.from(pin);
+  const valid = expected.length === received.length && crypto.timingSafeEqual(expected, received);
+  if (!valid) return res.status(401).json({ success: false, error: 'PIN admin tidak valid.' });
+  return res.json({ success: true });
+});
+
+const adminAuth = (req: Request, res: Response, next: () => void) => {
+  if (!ADMIN_SECRET_PIN) {
+    return res.status(503).json({ success: false, error: 'Autentikasi admin belum dikonfigurasi di server.' });
+  }
+  const pin = req.headers['x-admin-pin'] as string;
+  if (!pin) return res.status(401).json({ success: false, error: 'Autentikasi admin diperlukan.' });
+  const expected = Buffer.from(ADMIN_SECRET_PIN);
+  const received = Buffer.from(pin);
+  const valid = expected.length === received.length && crypto.timingSafeEqual(expected, received);
+  if (!valid) return res.status(401).json({ success: false, error: 'Otorisasi admin ditolak.' });
   next();
 };
 
@@ -877,96 +841,7 @@ app.patch('/api/admin/orders/:orderNumber/shipping', adminAuth, (req: Request, r
   res.json({ success: true, order });
 });
 
-// 11. POST /api/test/simulate-callback (Interactive Sandbox Test Tool)
-app.post('/api/test/simulate-callback', (req: Request, res: Response) => {
-  const { orderNumber, scenario, customAmount, tamperedSignature } = req.body;
-  const order = ordersDb.get(orderNumber);
-
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
-  }
-
-  const merchantCode = DUITKU_MERCHANT_CODE || 'D12345';
-  const apiKey = DUITKU_API_KEY || 'sandbox_test_key_abc123';
-  const amount = customAmount !== undefined ? customAmount : order.total_amount;
-  const resultCode = scenario === 'failed' ? '01' : '00';
-
-  // Calculate signature
-  let signature = crypto
-    .createHash('md5')
-    .update(`${merchantCode}${amount}${orderNumber}${apiKey}`)
-    .digest('hex');
-
-  if (tamperedSignature) {
-    signature = 'invalid_tampered_signature_99999';
-  }
-
-  const simulatedPayload = {
-    merchantCode,
-    amount: amount.toString(),
-    merchantOrderId: orderNumber,
-    signature,
-    resultCode,
-    reference: order.duitku_reference || `DS-${Date.now()}`,
-    paymentMethod: 'VA_BCA',
-    paymentCode: '014',
-  };
-
-  // Perform internal call to callback logic
-  // Signature check
-  const expectedRaw = `${merchantCode}${amount}${orderNumber}${apiKey}`;
-  const validMD5 = crypto.createHash('md5').update(expectedRaw).digest('hex');
-
-  if (signature.toLowerCase() !== validMD5.toLowerCase()) {
-    return res.json({
-      success: false,
-      scenario,
-      error: 'TEST RESULT: Callback Ditolak (HTTP 401 Unauthorized - Signature Tidak Valid). Keamanan Signature Lulus!',
-      payloadSent: simulatedPayload,
-    });
-  }
-
-  if (Math.abs(Number(amount) - order.total_amount) > 0.01) {
-    return res.json({
-      success: false,
-      scenario,
-      error: 'TEST RESULT: Callback Ditolak (HTTP 400 Conflict - Nominal Mismatch). Integritas Nominal Lulus!',
-      payloadSent: simulatedPayload,
-    });
-  }
-
-  if (order.payment_status === 'paid' && scenario === 'duplicate') {
-    return res.json({
-      success: true,
-      scenario,
-      message: 'TEST RESULT: Idempotensi Lulus. Callback duplikat direspons SUCCESS tanpa mengubah stok ulang.',
-      payloadSent: simulatedPayload,
-    });
-  }
-
-  const isSuccess = resultCode === '00';
-  order.payment_status = isSuccess ? 'paid' : 'failed';
-  if (isSuccess && order.fulfillment_status === 'unfulfilled') {
-    order.fulfillment_status = 'processing';
-  }
-  order.updated_at = new Date().toISOString();
-  order.audit_logs.push({
-    action: `SIMULATED_CALLBACK_${isSuccess ? 'SUCCESS' : 'FAILED'}`,
-    timestamp: new Date().toISOString(),
-    details: simulatedPayload,
-  });
-
-  return res.json({
-    success: true,
-    scenario,
-    message: isSuccess
-      ? 'TEST RESULT: Pembayaran Terverifikasi Lunas! Pesanan kini status PAID.'
-      : 'TEST RESULT: Status Pembayaran Gagal Tercatat (resultCode 01).',
-    currentPaymentStatus: order.payment_status,
-    payloadSent: simulatedPayload,
-  });
-});
-
+// Callback simulation is intentionally not exposed by the application server.
 // -------------------------------------------------------------
 // VITE DEV SERVER / PRODUCTION STATIC SERVING
 // -------------------------------------------------------------
