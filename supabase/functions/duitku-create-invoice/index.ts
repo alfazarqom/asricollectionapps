@@ -69,9 +69,14 @@ serve(async (req: Request) => {
     } = body;
 
     // 1. Validasi Input Penerima
-    if (!recipient?.name || !recipient?.phone || !recipient?.email || !recipient?.address) {
+    if (
+      typeof recipient?.name !== "string" || !recipient.name.trim() ||
+      typeof recipient?.phone !== "string" || recipient.phone.replace(/\\D/g, "").length < 8 ||
+      typeof recipient?.email !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(recipient.email.trim()) ||
+      typeof recipient?.address !== "string" || !recipient.address.trim()
+    ) {
       return new Response(
-        JSON.stringify({ error: "Data penerima tidak lengkap (nama, nomor telepon, email, alamat diperlukan)." }),
+        JSON.stringify({ error: "Data penerima tidak lengkap atau tidak valid." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -115,8 +120,8 @@ serve(async (req: Request) => {
         );
       }
 
-      const qty = parseInt(item.quantity, 10);
-      if (isNaN(qty) || qty <= 0) {
+      const qty = Number(item.quantity);
+      if (!Number.isSafeInteger(qty) || qty <= 0) {
         return new Response(
           JSON.stringify({ error: `Kuantitas produk "${liveProduct.title}" tidak valid.` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -126,6 +131,13 @@ serve(async (req: Request) => {
       const verifiedUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined 
         ? Number(liveProduct.sale_price) 
         : Number(liveProduct.price);
+
+      if (!Number.isFinite(verifiedUnitPrice) || verifiedUnitPrice < 0) {
+        return new Response(
+          JSON.stringify({ error: `Harga produk "${liveProduct.title}" tidak valid di katalog.` }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       const itemSubtotal = verifiedUnitPrice * qty;
       calculatedSubtotal += itemSubtotal;
@@ -141,17 +153,20 @@ serve(async (req: Request) => {
     }
 
     // 3. Validasi Ongkos Kirim di Backend
-    const validCouriers: Record<string, number> = {
-      "jne_reg": 18000,
-      "sicepat_reg": 16000,
-      "jnt_reg": 17000,
-      "gosend_sameday": 25000,
-      "pickup_store": 0,
+    const validCouriers: Record<string, { name: string; cost: number }> = {
+      "jne_reg": { name: "JNE Reguler", cost: 18000 },
+      "sicepat_reg": { name: "SiCepat REG", cost: 16000 },
+      "jnt_reg": { name: "J&T Express", cost: 17000 },
+      "gosend_sameday": { name: "GoSend Same Day", cost: 25000 },
+      "pickup_store": { name: "Ambil di Toko", cost: 0 },
     };
 
-    const courierCode = courier?.code || "sicepat_reg";
-    const verifiedShippingCost = validCouriers[courierCode] ?? 18000;
-    const verifiedCourierName = courier?.name || "SiCepat REG";
+    const courierCode = typeof courier?.code === "string" && validCouriers[courier.code]
+      ? courier.code
+      : "sicepat_reg";
+    const selectedCourier = validCouriers[courierCode];
+    const verifiedShippingCost = selectedCourier.cost;
+    const verifiedCourierName = selectedCourier.name;
 
     const verifiedTotal = calculatedSubtotal + verifiedShippingCost;
 
