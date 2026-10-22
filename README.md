@@ -98,7 +98,8 @@ Kredensial jangan ditaruh di kode frontend, repository, log, URL, atau variabel 
 Konfigurasi runtime Edge Functions dilakukan melalui Supabase Secrets dan/atau konfigurasi lokal Supabase CLI. Nama variabel yang dipakai kode antara lain:
 
 - `DUITKU_MERCHANT_CODE`
-- `DUITKU_API_KEY`
+- `DUITKU_API_KEY` for Create Invoice
+- `DUITKU_MERCHANT_KEY` for callback verification (Duitku documents the callback key as `merchantKey`; do not assume it equals the API key without merchant confirmation)
 - `DUITKU_ENV`
 - `APP_URL`
 - `DUITKU_CALLBACK_URL` (opsional)
@@ -115,7 +116,7 @@ Konfigurasi runtime Edge Functions dilakukan melalui Supabase Secrets dan/atau k
 4. Duitku mengirim HTTP callback ke endpoint publik. Signature callback diverifikasi menggunakan HMAC-SHA256 sesuai dokumentasi POP.
 5. Perubahan status pembayaran harus dilakukan melalui RPC database atomik yang terverifikasi. Redirect browser bukan bukti pembayaran.
 
-Signature Create Invoice POP menggunakan HMAC-SHA256 atas `merchantCode + timestamp` dengan API key. Signature callback POP menggunakan HMAC-SHA256 atas `merchantCode + amount + merchantOrderId` dengan key yang sesuai kontrak merchant. Lihat [dokumentasi resmi Duitku](./list-dokumentasi-resmi.md) dan konfirmasi kontrak merchant bila konfigurasi akun berbeda.
+Signature Create Invoice POP menggunakan HMAC-SHA256 atas `merchantCode + timestamp` dengan API key. Signature callback POP menggunakan HMAC-SHA256 atas `merchantCode + amount + merchantOrderId` dengan `merchantKey` sesuai kontrak merchant. Kode mengharuskan secret `DUITKU_MERCHANT_KEY` terpisah agar tidak mengasumsikan bahwa merchant key identik dengan API key. Lihat [dokumentasi resmi Duitku](./list-dokumentasi-resmi.md) dan konfirmasi kontrak merchant bila konfigurasi akun berbeda.
 
 ## API dan fungsi
 
