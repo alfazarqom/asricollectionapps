@@ -205,7 +205,7 @@ app.post('/api/duitku-check-status', async (req: Request, res: Response) => {
 
 // Guest tracking is backed by the canonical Supabase Edge Function, never an in-memory Map.
 app.post('/api/orders/track', async (req: Request, res: Response) => {
-  const endpoint = SUPABASE_URL.replace(/\\/$/, '') + '/functions/v1/get-order-tracking';
+  const endpoint = SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/get-order-tracking';
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -224,7 +224,7 @@ app.post('/api/orders/track', async (req: Request, res: Response) => {
 });
 
 // Admin APIs proxy to the same persistent Supabase-backed implementation used by Vercel rewrites.
-const ADMIN_API_URL = SUPABASE_URL.replace(/\\/$/, '') + '/functions/v1/admin-api';
+const ADMIN_API_URL = SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/admin-api';
 async function forwardAdminApi(
   action: string,
   req: Request,
