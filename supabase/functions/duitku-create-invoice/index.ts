@@ -225,6 +225,14 @@ serve(async (req: Request) => {
       });
       if (reservationError || reservationResult?.success === false) {
         console.error("Inventory reservation failed:", reservationError?.message || reservationResult?.message);
+        const { error: releaseError } = await supabase
+          .from("inventory_reservations")
+          .update({ status: "released" })
+          .eq("order_id", orderId)
+          .eq("status", "reserved");
+        if (releaseError) {
+          console.error("Could not release partial inventory reservations:", releaseError.message);
+        }
         await supabase.from("order_items").delete().eq("order_id", orderId);
         await supabase.from("orders").delete().eq("id", orderId);
         throw new Error("Stok tidak dapat direservasi. Pesanan belum dibuat.");
