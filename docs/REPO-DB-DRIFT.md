@@ -75,3 +75,12 @@ Branch audit ini menghapus data contoh pesanan yang otomatis ditanam, menghapus 
 ## Batasan bukti
 
 Audit ini menggunakan metadata proyek, daftar migration/fungsi, tabel/policy/grants, advisor, dan file repository yang dapat dibaca. Belum dilakukan dump lengkap seluruh schema atau pengujian langsung pada database. Tidak ada kesimpulan bahwa seluruh RLS, fungsi aktif, atau alur pembayaran telah lolos uji.
+
+
+## Patch lanjutan: stok atomik dan kontrak tracking/admin (belum diterapkan ke Supabase)
+
+Migration kandidat `supabase/migrations/20261022100000_atomic_stock_tracking_admin.sql` menambahkan `products.stock_quantity` sebagai integer non-negatif dengan default 0. Nilai default nol dipilih secara fail-closed karena jumlah stok historis belum terverifikasi; setelah migration disetujui dan diterapkan, jumlah fisik harus diisi berdasarkan inventaris nyata sebelum checkout menerima pesanan. Migration juga mengganti `reserve_inventory_atomic` dan `process_duitku_callback_atomic` agar reservasi mengurangi ketersediaan yang dapat dipesan, dan callback sukses mengurangi stok fisik hanya ketika seluruh reservasi masih aktif. Pembayaran sukses yang terlambat atau tanpa reservasi valid tetap tercatat sebagai pembayaran yang perlu rekonsiliasi; stok tidak dialokasikan otomatis.
+
+Kontrak tracking sekarang dikandidatkan melalui `get-order-tracking`, yang meminta nomor pesanan beserta email/telepon yang cocok tepat dengan data checkout. `/api/orders/track` tidak lagi membaca `Map` lokal. Endpoint admin diarahkan ke `admin-api`, membaca tabel `orders`/item secara persisten, dan memakai RPC `admin_update_order_shipping_atomic` untuk memperbarui ongkir/status serta audit log dalam satu transaksi.
+
+**Batasan penting:** file migration belum dijalankan pada proyek Supabase aktif; fungsi Edge baru belum dideploy; secret `ADMIN_SECRET_PIN` harus dikonfigurasi terpisah di Supabase Secrets sebelum endpoint admin dapat digunakan. Verifikasi CI dan pengujian integrasi masih wajib sebelum keputusan merge.
