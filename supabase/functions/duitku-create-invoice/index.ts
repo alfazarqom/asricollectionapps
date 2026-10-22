@@ -4,29 +4,12 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
+import { hmacSha256Hex } from "../_shared/duitku-pop.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-// Helper: HMAC-SHA256 hex digest
-async function hmacSha256Hex(key: string, data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyBuffer = encoder.encode(key);
-  const dataBuffer = encoder.encode(data);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyBuffer,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, dataBuffer);
-  const hashArray = Array.from(new Uint8Array(signatureBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 serve(async (req: Request) => {
   // CORS Preflight
