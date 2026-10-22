@@ -14,7 +14,6 @@ import {
   X,
   FileCode,
   ShieldAlert,
-  Play,
   AlertTriangle,
   ArrowLeft,
   ChevronRight,
@@ -30,11 +29,9 @@ interface AdminPageProps {
 
 export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
   const navigate = useNavigate();
-  // Admin PIN Protection (Default PIN: 123456)
+  // Admin authentication must be verified by the server; no client-side default PIN.
   const [pinInput, setPinInput] = useState('');
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('tokokatalog_admin_pin') === '123456';
-  });
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const handleBackToStore = () => {
@@ -42,8 +39,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
     else navigate('/');
   };
 
-  // Tab: 'dashboard' | 'orders' | 'simulator' | 'code'
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'simulator' | 'code'>('dashboard');
+  // Tab: 'dashboard' | 'orders' | 'code'
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'code'>('dashboard');
 
   // Metrics
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
@@ -64,29 +61,28 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
   const [isSavingShipping, setIsSavingShipping] = useState(false);
   const [shippingSaveSuccess, setShippingSaveSuccess] = useState(false);
 
-  // Sandbox Simulator State
-  const [simOrderNumber, setSimOrderNumber] = useState('');
-  const [simScenario, setSimScenario] = useState<'success' | 'failed' | 'duplicate' | 'tampered_sig' | 'tampered_amount'>('success');
-  const [simResult, setSimResult] = useState<any>(null);
-  const [simRunning, setSimRunning] = useState(false);
+  const getAdminHeaders = () => ({
+    'Content-Type': 'application/json',
+    'x-admin-pin': sessionStorage.getItem('tokokatalog_admin_pin') || '',
+  });
 
-  const getAdminHeaders = () => {
-    const pin = sessionStorage.getItem('tokokatalog_admin_pin') || '123456';
-    return {
-      'Content-Type': 'application/json',
-      'x-admin-pin': pin,
-    };
-  };
-
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput === '123456') {
-      sessionStorage.setItem('tokokatalog_admin_pin', '123456');
+    setAuthError(null);
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Autentikasi admin gagal.');
+      sessionStorage.setItem('tokokatalog_admin_pin', pinInput);
       setIsAdminAuthenticated(true);
-      setAuthError(null);
+      setPinInput('');
       fetchData();
-    } else {
-      setAuthError('PIN Admin salah. Gunakan default: 123456');
+    } catch (err: any) {
+      setAuthError(err.message || 'Autentikasi admin gagal.');
     }
   };
 
@@ -170,40 +166,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
     }
   };
 
-  // Run Simulator Callback
-  const handleRunSimulation = async () => {
-    if (!simOrderNumber) {
-      alert('Pilih nomor pesanan terlebih dahulu.');
-      return;
-    }
-
-    setSimRunning(true);
-    setSimResult(null);
-
-    try {
-      const bodyPayload: any = {
-        orderNumber: simOrderNumber,
-        scenario: simScenario === 'tampered_sig' ? 'success' : simScenario,
-        tamperedSignature: simScenario === 'tampered_sig',
-        customAmount: simScenario === 'tampered_amount' ? 9999999 : undefined,
-      };
-
-      const res = await fetch('/api/test/simulate-callback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyPayload),
-      });
-
-      const data = await res.json();
-      setSimResult(data);
-      fetchData();
-    } catch (err: any) {
-      setSimResult({ success: false, error: err.message });
-    } finally {
-      setSimRunning(false);
-    }
-  };
-
   // ---------------- LOGIN SCREEN ----------------
   if (!isAdminAuthenticated) {
     return (
@@ -227,7 +189,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
                 maxLength={6}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
-                placeholder="Masukkan 6-Digit PIN (Default: 123456)"
+                placeholder="Masukkan PIN admin"
                 className="w-full h-11 px-3 text-center tracking-widest text-base font-mono bg-slate-50 border border-gray-200 rounded-xl focus:outline-none focus:border-[#2563EB]"
               />
             </div>
@@ -292,7 +254,6 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
             {[
               { id: 'dashboard', label: 'Ringkasan' },
               { id: 'orders', label: `Pesanan (${orders.length})` },
-              { id: 'simulator', label: 'Duitku Simulator' },
               { id: 'code', label: 'SQL & Functions' },
             ].map((t) => (
               <button
@@ -477,101 +438,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
           </div>
         )}
 
-        {/* ---------------- TAB 3: DUITKU CALLBACK SIMULATOR ---------------- */}
-        {activeTab === 'simulator' && (
-          <div className="space-y-3.5">
-            <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-xs space-y-3">
-              <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Play className="w-3.5 h-3.5 text-[#2563EB]" /> Sandbox Callback Testing Suite
-              </h2>
-              <p className="text-[11px] text-gray-500 leading-relaxed">
-                Uji coba alur callback Duitku POP sesuai checklist pengujian nomor 11-16 (Verifikasi signature MD5, nominal mismatch, idempotensi duplikat, dan status hasil).
-              </p>
-
-              <div>
-                <label className="text-[11px] font-medium text-gray-700 block mb-1">
-                  Pilih Nomor Pesanan untuk Diuji:
-                </label>
-                <select
-                  value={simOrderNumber}
-                  onChange={(e) => setSimOrderNumber(e.target.value)}
-                  className="w-full h-10 px-3 bg-slate-50 border border-gray-200 rounded-xl text-xs font-mono text-gray-900"
-                >
-                  {orders.map((o) => (
-                    <option key={o.order_number} value={o.order_number}>
-                      {o.order_number} - {o.customer_name} ({formatRupiah(o.total_amount)}) [{o.payment_status}]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-medium text-gray-700 block mb-1">
-                  Skenario Pengujian:
-                </label>
-                <div className="space-y-1.5">
-                  {[
-                    { id: 'success', label: '1. Callback Sukses (ResultCode 00, Valid MD5 Signature)' },
-                    { id: 'failed', label: '2. Pembayaran Gagal (ResultCode 01)' },
-                    { id: 'duplicate', label: '3. Callback Duplikat (Uji Idempotensi / Tanpa double-commit)' },
-                    { id: 'tampered_sig', label: '4. Signature Palsu / Salah (Harus Ditolak HTTP 401)' },
-                    { id: 'tampered_amount', label: '5. Nominal Dimanipulasi (Harus Ditolak HTTP 400)' },
-                  ].map((sc) => (
-                    <label
-                      key={sc.id}
-                      className={`flex items-start gap-2 p-2 rounded-lg border text-xs cursor-pointer ${
-                        simScenario === sc.id
-                          ? 'border-[#2563EB] bg-blue-50 text-blue-900 font-medium'
-                          : 'border-gray-200 bg-white text-gray-700'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="simScenario"
-                        value={sc.id}
-                        checked={simScenario === sc.id}
-                        onChange={() => setSimScenario(sc.id as any)}
-                        className="mt-0.5"
-                      />
-                      <span className="text-[11px] leading-snug">{sc.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                onClick={handleRunSimulation}
-                disabled={simRunning}
-                className="w-full h-11 bg-[#2563EB] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-95 disabled:opacity-70"
-              >
-                {simRunning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                Kirim Simulasi Callback Duitku
-              </button>
-            </div>
-
-            {/* Simulation Result Output */}
-            {simResult && (
-              <div className="bg-slate-900 text-slate-100 rounded-xl p-3.5 font-mono text-[11px] space-y-2 overflow-x-auto">
-                <div className="flex items-center justify-between text-xs font-bold pb-1 border-b border-slate-700">
-                  <span>Hasil Eksekusi Simulasi</span>
-                  <span className={simResult.success ? 'text-emerald-400' : 'text-rose-400'}>
-                    {simResult.success ? 'SUCCESS (PASS)' : 'REJECTED (SECURITY PASS)'}
-                  </span>
-                </div>
-
-                {simResult.message && <p className="text-emerald-300">{simResult.message}</p>}
-                {simResult.error && <p className="text-amber-300">{simResult.error}</p>}
-
-                <div className="pt-2 text-[10px] text-slate-400">
-                  <p className="text-slate-300 font-bold mb-0.5">Payload yang Dikirimkan:</p>
-                  <pre>{JSON.stringify(simResult.payloadSent, null, 2)}</pre>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ---------------- TAB 4: SQL & EDGE FUNCTIONS ---------------- */}
+                {/* ---------------- TAB 3: SQL & EDGE FUNCTIONS ---------------- */}
         {activeTab === 'code' && (
           <div className="space-y-3.5 text-xs">
             <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-xs space-y-2">
