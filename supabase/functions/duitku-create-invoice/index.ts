@@ -28,15 +28,6 @@ async function hmacSha256Hex(key: string, data: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Helper: SHA256 hex digest (standard fallback)
-async function sha256Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -50,6 +41,13 @@ serve(async (req: Request) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const APP_URL = Deno.env.get("APP_URL") || "https://example.com";
+
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Konfigurasi pembayaran belum lengkap. Invoice tidak dibuat." }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -208,7 +206,7 @@ serve(async (req: Request) => {
     // Formula resmi Duitku POP: HMAC_SHA256(merchantCode + timestamp, apiKey)
     const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + timestamp);
 
-    const callbackUrl = Deno.env.get("DUITKU_CALLBACK_URL") || `${APP_URL}/api/duitku-callback`;
+    const callbackUrl = Deno.env.get("DUITKU_CALLBACK_URL") || `${SUPABASE_URL}/functions/v1/duitku-callback`;
     const returnUrl = Deno.env.get("DUITKU_RETURN_URL") || `${APP_URL}/orders/${orderNumber}?token=${accessToken}`;
 
     const itemDetailsPayload = validatedItems.map((it) => ({
@@ -257,32 +255,29 @@ serve(async (req: Request) => {
     let reference = "";
     let paymentUrl = "";
 
-    // Panggil Duitku jika credentials ada, atau gunakan sandbox simulation jika kosong
-    if (DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-      const duitkuResponse = await fetch(createInvoiceUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-duitku-signature": signature,
-          "x-duitku-timestamp": timestamp,
-          "x-duitku-merchantcode": DUITKU_MERCHANT_CODE,
-        },
-        body: JSON.stringify(duitkuPayload),
-      });
+    // Fail closed: tidak pernah membuat reference/payment URL simulasi.
+    const duitkuResponse = await fetch(createInvoiceUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-duitku-signature": signature,
+        "x-duitku-timestamp": timestamp,
+        "x-duitku-merchantcode": DUITKU_MERCHANT_CODE,
+      },
+      body: JSON.stringify(duitkuPayload),
+    });
 
-      const duitkuResult = await duitkuResponse.json();
-
-      if (duitkuResult.statusCode === "00" && duitkuResult.reference) {
-        reference = duitkuResult.reference;
-        paymentUrl = duitkuResult.paymentUrl || "";
-      } else {
-        throw new Error(duitkuResult.statusMessage || "Duitku menolak pembuatan invoice.");
-      }
-    } else {
-      // Sandbox fallback token untuk mode testing lokal/staging
-      reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
+    const duitkuResult = await duitkuResponse.json().catch(() => ({}));
+    if (!duitkuResponse.ok || duitkuResult.statusCode !== "00" || !duitkuResult.reference) {
+      console.error("Duitku createInvoice failed", { httpStatus: duitkuResponse.status, statusCode: duitkuResult.statusCode });
+      return new Response(
+        JSON.stringify({ success: false, error: "Duitku gagal membuat invoice. Tidak ada pembayaran simulasi yang dibuat." }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    const reference = duitkuResult.reference;
+    const paymentUrl = duitkuResult.paymentUrl || "";
 
     // Update order dengan referensi Duitku
     await supabase
