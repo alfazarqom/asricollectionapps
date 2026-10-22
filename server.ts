@@ -124,7 +124,7 @@ app.post('/api/create-invoice', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'Data checkout tidak lengkap atau tidak valid.' });
   }
 
-  const endpoint = \`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/duitku-create-invoice\`;
+  const endpoint = SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/duitku-create-invoice';
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -168,7 +168,7 @@ app.get('/api/orders/:orderNumber', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'Nomor pesanan dan token akses wajib diisi.' });
   }
 
-  const endpoint = new URL(\`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-duitku-payment-status\`);
+  const endpoint = new URL(SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/get-duitku-payment-status');
   endpoint.searchParams.set('orderNumber', orderNumber);
   endpoint.searchParams.set('token', token);
   try {
@@ -190,7 +190,7 @@ app.post('/api/duitku-check-status', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'Nomor pesanan dan token akses wajib diisi.' });
   }
 
-  const endpoint = new URL(\`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-duitku-payment-status\`);
+  const endpoint = new URL(SUPABASE_URL.replace(/\/$/, '') + '/functions/v1/get-duitku-payment-status');
   endpoint.searchParams.set('orderNumber', orderNumber.trim());
   endpoint.searchParams.set('token', token);
   try {
