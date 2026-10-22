@@ -31,6 +31,8 @@ Repository memuat fungsi invoice, callback, dan status pembayaran, tetapi nama f
 
 Perbaikan di branch audit ini tidak dideploy ke Supabase. Artinya, perubahan callback HMAC dan fail-closed pada repository **belum** berlaku pada fungsi yang sedang aktif sampai proses deployment mendapat persetujuan terpisah.
 
+Dokumentasi POP membedakan key untuk Create Invoice dan menyebut `merchantKey` untuk signature callback. Kode branch ini memakai secret `DUITKU_MERCHANT_KEY` khusus untuk callback. Apakah merchant key identik dengan API key pada akun merchant ini harus dikonfirmasi secara resmi; tidak ada secret aktif yang dibaca atau diubah.
+
 ### 3. Konsistensi pembayaran dan inventori
 
 Fungsi invoice di repository melakukan operasi terpisah untuk:
