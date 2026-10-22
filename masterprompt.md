@@ -322,7 +322,11 @@ Identitas merchant Duitku
 
 DUITKU_API_KEY
 
-Merchant API key / kredensial server Duitku sesuai dokumentasi
+API key untuk request Create Invoice POP
+
+DUITKU_MERCHANT_KEY
+
+Key untuk verifikasi callback POP; konfirmasi ke Duitku apakah nilainya identik dengan API key akun merchant ini
 
 DUITKU_ENV
 
@@ -344,6 +348,7 @@ Menyimpan Secrets
 
 supabase secrets set DUITKU_MERCHANT_CODE=<MERCHANT_CODE>
 supabase secrets set DUITKU_API_KEY=<DUITKU_API_KEY>
+supabase secrets set DUITKU_MERCHANT_KEY=<DUITKU_MERCHANT_KEY>
 supabase secrets set DUITKU_ENV=sandbox
 supabase secrets set DUITKU_CALLBACK_URL=<PUBLIC_CALLBACK_URL>
 supabase secrets set DUITKU_RETURN_URL=<FRONTEND_RETURN_URL>
@@ -361,6 +366,7 @@ File .env.example
 # Template dokumentasi saja; jangan isi dengan kredensial asli.
 DUITKU_MERCHANT_CODE=
 DUITKU_API_KEY=
+DUITKU_MERCHANT_KEY=
 DUITKU_ENV=sandbox
 DUITKU_CALLBACK_URL=
 DUITKU_RETURN_URL=
@@ -558,8 +564,8 @@ Callback harus:
 1. Memvalidasi content type, field wajib, tipe, panjang, dan format nilai.
 2. Memverifikasi signature dengan metode resmi POP. Dokumentasi POP saat revisi ini mencantumkan:
    stringToSign = merchantCode + amount + merchantOrderId
-   signature = HMAC_SHA256(stringToSign, apiKey)
-   Gunakan nama field, encoding, key, dan perbandingan signature tepat seperti dokumentasi merchant yang berlaku. Jangan gunakan signature MD5 lama.
+   signature = HMAC_SHA256(stringToSign, merchantKey)
+   Kode repository menggunakan secret `DUITKU_MERCHANT_KEY` khusus untuk callback. Jangan mengasumsikan nilainya identik dengan `DUITKU_API_KEY`; konfirmasikan pemetaan key dengan Duitku untuk akun merchant ini. Gunakan nama field, encoding, dan perbandingan signature tepat seperti kontrak merchant. Jangan gunakan signature MD5 lama.
 3. Mencocokkan merchantCode, merchantOrderId, amount, dan reference/provider transaction reference dengan catatan transaksi yang tersimpan.
 4. Mengevaluasi resultCode dan aturan pemetaan status provider; jangan menyimpulkan sukses dari keberadaan callback saja.
 5. Menolak callback dengan signature tidak valid, nominal berbeda, merchant/referensi tidak cocok, atau transisi status yang tidak diizinkan.
