@@ -161,6 +161,21 @@ serve(async (req: Request) => {
     const orderNumber = `ORD-${dateStr}-${randomSuffix}`;
     const accessToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 
+    const callbackUrl = DUITKU_CALLBACK_URL || `${APP_URL.replace(/\/$/, "")}/api/duitku-callback`;
+    const returnUrl = DUITKU_RETURN_URL || `${APP_URL.replace(/\/$/, "")}/orders/${orderNumber}?token=${accessToken}`;
+    for (const [label, value] of [["callback", callbackUrl], ["return", returnUrl]]) {
+      try {
+        const parsed = new URL(value);
+        if (parsed.protocol !== "https:") {
+          throw new Error("HTTPS is required for public payment URLs.");
+        }
+      } catch (_error) {
+        return new Response(JSON.stringify({ error: `URL ${label} tidak valid atau tidak aman.` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // 5. Simpan Pesanan Awal ke Database
     const { data: orderData, error: orderError } = await supabase
       .from("orders")
@@ -225,20 +240,7 @@ serve(async (req: Request) => {
     // Formula resmi Duitku POP: HMAC_SHA256(merchantCode + timestamp, apiKey)
     const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + timestamp);
 
-    const callbackUrl = DUITKU_CALLBACK_URL || `${APP_URL.replace(/\\/$/, "")}/api/duitku-callback`;
-    const returnUrl = DUITKU_RETURN_URL || `${APP_URL.replace(/\\/$/, "")}/orders/${orderNumber}?token=${accessToken}`;
-    for (const [label, value] of [["callback", callbackUrl], ["return", returnUrl]]) {
-      try {
-        const parsed = new URL(value);
-        if (parsed.protocol !== "https:" && !(DUITKU_ENV === "sandbox" && parsed.hostname === "localhost")) {
-          throw new Error("HTTPS is required for public payment URLs.");
-        }
-      } catch (_error) {
-        return new Response(JSON.stringify({ error: `URL ${label} tidak valid atau tidak aman.` }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
+
 
     const itemDetailsPayload = validatedItems.map((it) => ({
       name: it.title.substring(0, 50),
