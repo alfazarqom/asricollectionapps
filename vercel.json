@@ -22,8 +22,24 @@
       "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-duitku-payment-status"
     },
     {
+      "source": "/api/admin/auth",
+      "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/admin-api?action=auth"
+    },
+    {
+      "source": "/api/admin/metrics",
+      "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/admin-api?action=metrics"
+    },
+    {
+      "source": "/api/admin/orders",
+      "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/admin-api?action=orders"
+    },
+    {
+      "source": "/api/admin/orders/:orderNumber/shipping",
+      "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/admin-api?action=shipping&orderNumber=:orderNumber"
+    },
+    {
       "source": "/api/orders/track",
-      "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-duitku-payment-status"
+      "destination": "https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-order-tracking"
     },
     {
       "source": "/api/orders/:orderNumber",
