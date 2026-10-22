@@ -452,76 +452,27 @@ app.get('/api/orders/:orderNumber', async (req: Request, res: Response) => {
     });
   }
 
-  // Jika pesanan masih berstatus 'pending', tanyakan ke Duitku transactionStatus API (source of truth)
-  if (order.payment_status === 'pending' && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-    const duitkuStatus = await queryDuitkuTransactionStatus(order.order_number);
-    if (duitkuStatus) {
-      if (duitkuStatus.statusCode === '00') {
-        order.payment_status = 'paid';
-        if (order.fulfillment_status === 'unfulfilled') {
-          order.fulfillment_status = 'processing';
-        }
-        order.updated_at = new Date().toISOString();
-        order.audit_logs.push({
-          action: 'DUITKU_STATUS_SYNC_PAID',
-          timestamp: new Date().toISOString(),
-          details: duitkuStatus,
-        });
-        const resv = reservationsDb.get(order.id);
-        if (resv) resv.status = 'committed';
-      } else if (duitkuStatus.statusCode === '02') {
-        order.payment_status = 'failed';
-        order.updated_at = new Date().toISOString();
-        order.audit_logs.push({
-          action: 'DUITKU_STATUS_SYNC_FAILED',
-          timestamp: new Date().toISOString(),
-          details: duitkuStatus,
-        });
-        const resv = reservationsDb.get(order.id);
-        if (resv) resv.status = 'released';
-      }
-    }
-  }
+  // Payment status is changed only by the verified Supabase callback RPC.
+  // Do not reconcile or mutate payment state from a browser-facing read endpoint.
 
   // Sembunyikan token dari respons
   const { access_token, ...safeOrder } = order;
   res.json({ success: true, order: safeOrder });
 });
 
-// 5b. POST /api/duitku-check-status (Explicit status synchronization with Duitku)
-app.post('/api/duitku-check-status', async (req: Request, res: Response) => {
-  const { orderNumber, token } = req.body;
-  const order = ordersDb.get(orderNumber);
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
+// 5b. POST /api/duitku-check-status (read-only local status)
+app.post('/api/duitku-check-status', (req: Request, res: Response) => {
+  const { orderNumber, token } = req.body || {};
+  const order = typeof orderNumber === 'string' ? ordersDb.get(orderNumber) : undefined;
+  if (!order) return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
+  if (!token || token !== order.access_token) {
+    return res.status(403).json({ success: false, error: 'Token akses pesanan wajib dan harus valid.' });
   }
-
-  if (token && token !== order.access_token) {
-    return res.status(403).json({ success: false, error: 'Akses ditolak.' });
-  }
-
-  if (DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-    const duitkuStatus = await queryDuitkuTransactionStatus(orderNumber);
-    if (duitkuStatus) {
-      if (duitkuStatus.statusCode === '00' && order.payment_status !== 'paid') {
-        order.payment_status = 'paid';
-        if (order.fulfillment_status === 'unfulfilled') {
-          order.fulfillment_status = 'processing';
-        }
-        order.updated_at = new Date().toISOString();
-        order.audit_logs.push({
-          action: 'DUITKU_MANUAL_SYNC_PAID',
-          timestamp: new Date().toISOString(),
-          details: duitkuStatus,
-        });
-        const resv = reservationsDb.get(order.id);
-        if (resv) resv.status = 'committed';
-      }
-      return res.json({ success: true, paymentStatus: order.payment_status, duitkuResponse: duitkuStatus });
-    }
-  }
-
-  return res.json({ success: true, paymentStatus: order.payment_status });
+  return res.json({
+    success: true,
+    paymentStatus: order.payment_status,
+    reconciliation: 'disabled_until_official_POP_contract_is_confirmed',
+  });
 });
 
 // 6. POST /api/orders/track (Guest Order Search with optional verification)
