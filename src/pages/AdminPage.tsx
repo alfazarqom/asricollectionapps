@@ -448,10 +448,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
           <div className="space-y-3.5 text-xs">
             <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-xs space-y-2">
               <h2 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                <FileCode className="w-3.5 h-3.5 text-[#2563EB]" /> Supabase Artifacts Terpasang
+                <FileCode className="w-3.5 h-3.5 text-[#2563EB]" /> File Integrasi di Repository
               </h2>
               <p className="text-[11px] text-gray-500">
-                File migration SQL dan Edge Function telah siap di folder proyek:
+                File berikut tersedia di repository. Keberadaan file tidak membuktikan bahwa versi yang sama telah diterapkan ke Supabase aktif:
               </p>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-gray-700 pt-1 font-mono">
                 <li>supabase/migrations/20261009000000_init_ecommerce_duitku.sql</li>
@@ -463,13 +463,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBackToStore }) => {
             </div>
 
             <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-xs space-y-2">
-              <h3 className="text-xs font-bold text-gray-900 uppercase">Checklist Deployment Vercel &amp; Supabase</h3>
+              <h3 className="text-xs font-bold text-gray-900 uppercase">Checklist sebelum perubahan aktif</h3>
               <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-gray-600">
-                <li>Deploy SQL migration ke Supabase melalui CLI: <code>supabase db push</code></li>
-                <li>Set Edge Function secrets di Supabase: <code>supabase secrets set DUITKU_MERCHANT_CODE=... DUITKU_API_KEY=...</code></li>
-                <li>Deploy Edge Functions: <code>supabase functions deploy get-products --no-verify-jwt</code>, <code>supabase functions deploy duitku-create-invoice</code>, dan <code>supabase functions deploy duitku-callback --no-verify-jwt</code></li>
-                <li>Daftarkan URL callback resmi di Merchant Dashboard Duitku: <code>https://&lt;project&gt;.supabase.co/functions/v1/duitku-callback</code></li>
-                <li>Deploy frontend ke Vercel dengan command <code>npm run build</code></li>
+                <li>Rekonsiliasi seluruh migration repository dengan riwayat dan schema Supabase aktif.</li>
+                <li>Bandingkan source serta versi Edge Functions aktif dengan branch yang akan dirilis.</li>
+                <li>Konfirmasi secara resmi kontrak signature callback POP dan nilai secret <code>DUITKU_MERCHANT_KEY</code>.</li>
+                <li>Uji callback valid, signature salah, nominal berbeda, callback duplikat, dan kegagalan RPC di Sandbox/staging.</li>
+                <li>Siapkan diff dan minta persetujuan terpisah sebelum menjalankan migration, mengubah secrets, atau deploy.</li>
               </ol>
             </div>
           </div>
