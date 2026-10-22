@@ -17,23 +17,14 @@ serve(async (req: Request) => {
   }
 
   try {
-    const DUITKU_MERCHANT_CODE = Deno.env.get("DUITKU_MERCHANT_CODE") || "";
-    const DUITKU_API_KEY = Deno.env.get("DUITKU_API_KEY") || "";
-    const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return new Response(JSON.stringify({ error: "Payment status service is not configured." }), {
         status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!["sandbox", "production"].includes(DUITKU_ENV)) {
-      return new Response(JSON.stringify({ error: "Invalid payment environment configuration." }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     let orderNumber = "";
