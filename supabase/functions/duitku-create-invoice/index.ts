@@ -4,43 +4,20 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
+import { hmacSha256Hex } from "../_shared/duitku-pop.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Helper: HMAC-SHA256 hex digest
-async function hmacSha256Hex(key: string, data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyBuffer = encoder.encode(key);
-  const dataBuffer = encoder.encode(data);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyBuffer,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, dataBuffer);
-  const hashArray = Array.from(new Uint8Array(signatureBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-// Helper: SHA256 hex digest (standard fallback)
-async function sha256Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -49,7 +26,21 @@ serve(async (req: Request) => {
     const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const APP_URL = Deno.env.get("APP_URL") || "https://example.com";
+    const APP_URL = Deno.env.get("APP_URL") || "";
+    const DUITKU_CALLBACK_URL = Deno.env.get("DUITKU_CALLBACK_URL") || "";
+    const DUITKU_RETURN_URL = Deno.env.get("DUITKU_RETURN_URL") || "";
+
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !APP_URL) {
+      console.error("Invoice configuration is incomplete; refusing to create an order or invoice.");
+      return new Response(JSON.stringify({ error: "Payment service is not configured." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!["sandbox", "production"].includes(DUITKU_ENV)) {
+      return new Response(JSON.stringify({ error: "DUITKU_ENV must be sandbox or production." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -61,9 +52,14 @@ serve(async (req: Request) => {
     } = body;
 
     // 1. Validasi Input Penerima
-    if (!recipient?.name || !recipient?.phone || !recipient?.email || !recipient?.address) {
+    if (
+      typeof recipient?.name !== "string" || !recipient.name.trim() ||
+      typeof recipient?.phone !== "string" || recipient.phone.replace(/\D/g, "").length < 8 ||
+      typeof recipient?.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient.email.trim()) ||
+      typeof recipient?.address !== "string" || !recipient.address.trim()
+    ) {
       return new Response(
-        JSON.stringify({ error: "Data penerima tidak lengkap (nama, nomor telepon, email, alamat diperlukan)." }),
+        JSON.stringify({ error: "Data penerima tidak lengkap atau tidak valid." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -79,14 +75,13 @@ serve(async (req: Request) => {
     // JANGAN percaya harga dari client/browser!
     let authoritativeCatalog: any[] = [];
     const { data: dbProducts, error: dbErr } = await supabase.from("products").select("*");
-    if (!dbErr && dbProducts && dbProducts.length > 0) {
-      authoritativeCatalog = dbProducts;
-    } else {
-      const catalogResponse = await fetch("https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products");
-      if (catalogResponse.ok) {
-        authoritativeCatalog = await catalogResponse.json();
-      }
+    if (dbErr || !Array.isArray(dbProducts)) {
+      console.error("Could not load authoritative product catalog:", dbErr?.message || "invalid catalog response");
+      return new Response(JSON.stringify({ error: "Katalog produk tidak dapat diverifikasi. Silakan coba lagi." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    authoritativeCatalog = dbProducts;
     const catalogMap = new Map(authoritativeCatalog.map((p: any) => [p.id, p]));
 
     let calculatedSubtotal = 0;
@@ -108,8 +103,8 @@ serve(async (req: Request) => {
         );
       }
 
-      const qty = parseInt(item.quantity, 10);
-      if (isNaN(qty) || qty <= 0) {
+      const qty = Number(item.quantity);
+      if (!Number.isSafeInteger(qty) || qty <= 0) {
         return new Response(
           JSON.stringify({ error: `Kuantitas produk "${liveProduct.title}" tidak valid.` }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -119,6 +114,13 @@ serve(async (req: Request) => {
       const verifiedUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined 
         ? Number(liveProduct.sale_price) 
         : Number(liveProduct.price);
+
+      if (!Number.isFinite(verifiedUnitPrice) || verifiedUnitPrice < 0) {
+        return new Response(
+          JSON.stringify({ error: `Harga produk "${liveProduct.title}" tidak valid di katalog.` }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       const itemSubtotal = verifiedUnitPrice * qty;
       calculatedSubtotal += itemSubtotal;
@@ -134,17 +136,20 @@ serve(async (req: Request) => {
     }
 
     // 3. Validasi Ongkos Kirim di Backend
-    const validCouriers: Record<string, number> = {
-      "jne_reg": 18000,
-      "sicepat_reg": 16000,
-      "jnt_reg": 17000,
-      "gosend_sameday": 25000,
-      "pickup_store": 0,
+    const validCouriers: Record<string, { name: string; cost: number }> = {
+      "jne_reg": { name: "JNE Reguler", cost: 18000 },
+      "sicepat_reg": { name: "SiCepat REG", cost: 16000 },
+      "jnt_reg": { name: "J&T Express", cost: 17000 },
+      "gosend_sameday": { name: "GoSend Same Day", cost: 25000 },
+      "pickup_store": { name: "Ambil di Toko", cost: 0 },
     };
 
-    const courierCode = courier?.code || "sicepat_reg";
-    const verifiedShippingCost = validCouriers[courierCode] ?? 18000;
-    const verifiedCourierName = courier?.name || "SiCepat REG";
+    const courierCode = typeof courier?.code === "string" && validCouriers[courier.code]
+      ? courier.code
+      : "sicepat_reg";
+    const selectedCourier = validCouriers[courierCode];
+    const verifiedShippingCost = selectedCourier.cost;
+    const verifiedCourierName = selectedCourier.name;
 
     const verifiedTotal = calculatedSubtotal + verifiedShippingCost;
 
@@ -153,6 +158,21 @@ serve(async (req: Request) => {
     const randomSuffix = Math.floor(10000 + Math.random() * 90000);
     const orderNumber = `ORD-${dateStr}-${randomSuffix}`;
     const accessToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+
+    const callbackUrl = DUITKU_CALLBACK_URL || `${APP_URL.replace(/\/$/, "")}/api/duitku-callback`;
+    const returnUrl = DUITKU_RETURN_URL || `${APP_URL.replace(/\/$/, "")}/orders/${orderNumber}?token=${accessToken}`;
+    for (const [label, value] of [["callback", callbackUrl], ["return", returnUrl]]) {
+      try {
+        const parsed = new URL(value);
+        if (parsed.protocol !== "https:") {
+          throw new Error("HTTPS is required for public payment URLs.");
+        }
+      } catch (_error) {
+        return new Response(JSON.stringify({ error: `URL ${label} tidak valid atau tidak aman.` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // 5. Simpan Pesanan Awal ke Database
     const { data: orderData, error: orderError } = await supabase
@@ -187,16 +207,34 @@ serve(async (req: Request) => {
       ...it,
       order_id: orderId,
     }));
-    await supabase.from("order_items").insert(itemsToInsert);
+    const { error: itemsError } = await supabase.from("order_items").insert(itemsToInsert);
+    if (itemsError) {
+      await supabase.from("orders").delete().eq("id", orderId);
+      throw new Error("Gagal menyimpan item pesanan.");
+    }
 
-    // Buat inventory reservation atomik
+    // Reservation is requested through the database function. Do not continue on an RPC error.
     for (const it of validatedItems) {
-      await supabase.rpc("reserve_inventory_atomic", {
+      const { data: reservationResult, error: reservationError } = await supabase.rpc("reserve_inventory_atomic", {
         p_order_id: orderId,
         p_product_id: it.product_id,
         p_quantity: it.quantity,
         p_minutes: 60,
       });
+      if (reservationError || reservationResult?.success === false) {
+        console.error("Inventory reservation failed:", reservationError?.message || reservationResult?.message);
+        const { error: releaseError } = await supabase
+          .from("inventory_reservations")
+          .update({ status: "released" })
+          .eq("order_id", orderId)
+          .eq("status", "reserved");
+        if (releaseError) {
+          console.error("Could not release partial inventory reservations:", releaseError.message);
+        }
+        await supabase.from("order_items").delete().eq("order_id", orderId);
+        await supabase.from("orders").delete().eq("id", orderId);
+        throw new Error("Stok tidak dapat direservasi. Pesanan belum dibuat.");
+      }
     }
 
     // 6. Buat Signature & Request ke Duitku POP
@@ -208,8 +246,7 @@ serve(async (req: Request) => {
     // Formula resmi Duitku POP: HMAC_SHA256(merchantCode + timestamp, apiKey)
     const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + timestamp);
 
-    const callbackUrl = Deno.env.get("DUITKU_CALLBACK_URL") || `${APP_URL}/api/duitku-callback`;
-    const returnUrl = Deno.env.get("DUITKU_RETURN_URL") || `${APP_URL}/orders/${orderNumber}?token=${accessToken}`;
+
 
     const itemDetailsPayload = validatedItems.map((it) => ({
       name: it.title.substring(0, 50),
@@ -257,9 +294,9 @@ serve(async (req: Request) => {
     let reference = "";
     let paymentUrl = "";
 
-    // Panggil Duitku jika credentials ada, atau gunakan sandbox simulation jika kosong
-    if (DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-      const duitkuResponse = await fetch(createInvoiceUrl, {
+    let duitkuResponse: Response;
+    try {
+      duitkuResponse = await fetch(createInvoiceUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -269,32 +306,77 @@ serve(async (req: Request) => {
         },
         body: JSON.stringify(duitkuPayload),
       });
-
-      const duitkuResult = await duitkuResponse.json();
-
-      if (duitkuResult.statusCode === "00" && duitkuResult.reference) {
-        reference = duitkuResult.reference;
-        paymentUrl = duitkuResult.paymentUrl || "";
-      } else {
-        throw new Error(duitkuResult.statusMessage || "Duitku menolak pembuatan invoice.");
-      }
-    } else {
-      // Sandbox fallback token untuk mode testing lokal/staging
-      reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
+    } catch (_error) {
+      // The provider may have received the request even if the response timed out.
+      // Keep the order/reservation pending for manual reconciliation; do not retry automatically.
+      console.error("Duitku invoice request outcome is unknown; manual reconciliation is required.");
+      return new Response(JSON.stringify({
+        error: "Hasil permintaan invoice belum dapat dipastikan. Jangan ulangi pembayaran; hubungi admin untuk rekonsiliasi.",
+        orderNumber,
+      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Update order dengan referensi Duitku
-    await supabase
-      .from("orders")
-      .update({
-        duitku_reference: reference,
-        duitku_payment_url: paymentUrl,
-      })
-      .eq("id", orderId);
+    let duitkuResult: any;
+    try {
+      duitkuResult = await duitkuResponse.json();
+    } catch (_error) {
+      console.error("Duitku returned a non-JSON response; order remains pending for reconciliation.");
+      return new Response(JSON.stringify({
+        error: "Respons Duitku tidak dapat diverifikasi. Jangan ulangi pembayaran; hubungi admin untuk rekonsiliasi.",
+        orderNumber,
+      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
-    // Catat record awal ke tabel payments
-    await supabase.from("payments").insert({
+    if (!duitkuResponse.ok || duitkuResult?.statusCode !== "00") {
+      console.error("Duitku explicitly rejected invoice creation:", { httpStatus: duitkuResponse.status, statusCode: duitkuResult?.statusCode });
+      const { error: orderFailError } = await supabase
+        .from("orders")
+        .update({ payment_status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+      const { error: releaseError } = await supabase
+        .from("inventory_reservations")
+        .update({ status: "released" })
+        .eq("order_id", orderId)
+        .eq("status", "reserved");
+      if (orderFailError || releaseError) {
+        console.error("Failed to finalize rejected invoice cleanup:", orderFailError?.message || releaseError?.message);
+      }
+      return new Response(JSON.stringify({ error: "Duitku menolak pembuatan invoice. Pesanan ditandai gagal." }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!duitkuResult?.reference || !duitkuResult?.paymentUrl) {
+      console.error("Duitku returned success without a reference/payment URL; order remains pending for reconciliation.");
+      return new Response(JSON.stringify({
+        error: "Respons sukses Duitku tidak lengkap. Jangan ulangi pembayaran; hubungi admin untuk rekonsiliasi.",
+        orderNumber,
+      }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    reference = String(duitkuResult.reference);
+    paymentUrl = String(duitkuResult.paymentUrl);
+
+    let parsedPaymentUrl: URL;
+    try {
+      parsedPaymentUrl = new URL(paymentUrl);
+    } catch (_error) {
+      throw new Error("Duitku returned an invalid payment URL.");
+    }
+    if (parsedPaymentUrl.protocol !== "https:") {
+      throw new Error("Duitku returned a non-HTTPS payment URL.");
+    }
+
+    // Update order with the provider reference. A database error must not be ignored.
+    const { error: orderUpdateError } = await supabase
+      .from("orders")
+      .update({ duitku_reference: reference, duitku_payment_url: paymentUrl })
+      .eq("id", orderId);
+    if (orderUpdateError) {
+      console.error("Failed to persist Duitku reference:", orderUpdateError.message);
+      throw new Error("Invoice dibuat tetapi gagal menyimpan referensi pembayaran. Hubungi admin sebelum mencoba ulang.");
+    }
+
+    const { error: paymentInsertError } = await supabase.from("payments").insert({
       order_id: orderId,
       merchant_order_id: orderNumber,
       reference,
@@ -307,6 +389,10 @@ serve(async (req: Request) => {
       environment: DUITKU_ENV,
       status: "pending",
     });
+    if (paymentInsertError) {
+      console.error("Failed to persist payment record:", paymentInsertError.message);
+      throw new Error("Invoice dibuat tetapi gagal menyimpan catatan pembayaran. Hubungi admin.");
+    }
 
     // Kembalikan HANYA data yang diperlukan frontend (tanpa secrets!)
     return new Response(

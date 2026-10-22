@@ -4,7 +4,6 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,27 +11,20 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-// Helper: MD5 hex digest
-async function md5Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("MD5", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const DUITKU_MERCHANT_CODE = Deno.env.get("DUITKU_MERCHANT_CODE") || "";
-    const DUITKU_API_KEY = Deno.env.get("DUITKU_API_KEY") || "";
-    const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(JSON.stringify({ error: "Payment status service is not configured." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     let orderNumber = "";
@@ -50,6 +42,10 @@ serve(async (req: Request) => {
       } catch (_e) {
         // Body might be empty or url-encoded
       }
+    }
+
+    if (!["GET", "POST"].includes(req.method)) {
+      return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
     }
 
     if (!orderNumber || !orderNumber.trim()) {
@@ -75,68 +71,19 @@ serve(async (req: Request) => {
       });
     }
 
-    // 2. Otorisasi Kepemilikan: Jika token akses disertakan, validasi kecocokannya
-    if (accessToken && order.access_token && order.access_token !== accessToken) {
+    // Order details are private: a valid access token is mandatory, not optional.
+    if (!accessToken || typeof order.access_token !== "string" || order.access_token !== accessToken) {
       return new Response(JSON.stringify({ error: "Akses ditolak. Token akses tidak valid." }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 3. Rekonsiliasi Otomatis dengan Duitku TransactionStatus API jika masih pending
-    if (order.payment_status === "pending" && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-      const checkUrl = DUITKU_ENV === "production"
-        ? "https://api-prod.duitku.com/api/merchant/transactionStatus"
-        : "https://api-sandbox.duitku.com/api/merchant/transactionStatus";
-
-      // Formula: MD5(merchantCode + merchantOrderId + apiKey)
-      const signature = await md5Hex(DUITKU_MERCHANT_CODE + cleanOrderNumber + DUITKU_API_KEY);
-
-      try {
-        const duitkuRes = await fetch(checkUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            merchantCode: DUITKU_MERCHANT_CODE,
-            merchantOrderId: cleanOrderNumber,
-            signature,
-          }),
-        });
-
-        if (duitkuRes.ok) {
-          const duitkuStatus = await duitkuRes.json();
-          if (duitkuStatus.statusCode === "00") {
-            // Perbarui status menjadi paid
-            order.payment_status = "paid";
-            if (order.fulfillment_status === "unfulfilled") {
-              order.fulfillment_status = "processing";
-            }
-            await supabase
-              .from("orders")
-              .update({
-                payment_status: "paid",
-                fulfillment_status: order.fulfillment_status,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", order.id);
-
-            try {
-              await supabase.rpc("commit_inventory_atomic", { p_order_id: order.id });
-            } catch (_rpcErr) {
-              // RPC non-critical here
-            }
-          } else if (duitkuStatus.statusCode === "02") {
-            order.payment_status = "failed";
-            await supabase
-              .from("orders")
-              .update({ payment_status: "failed", updated_at: new Date().toISOString() })
-              .eq("id", order.id);
-          }
-        }
-      } catch (e) {
-        console.warn("Duitku status check error:", e);
-      }
-    }
+    // 3. Provider-side reconciliation is deliberately not called from this public read endpoint.
+    // The POP docs must be confirmed for the exact transaction-status endpoint/contract before
+    // enabling provider inquiries. This endpoint must never mutate payment state; the verified
+    // callback's atomic RPC is the payment-state source of truth.
+    const providerStatus = null;
 
     // 4. Return Safe Response (Hide Access Token & Secrets)
     const { access_token, order_items, ...safeOrder } = order;
@@ -148,13 +95,14 @@ serve(async (req: Request) => {
         order: safeOrder,
         paymentStatus: safeOrder.payment_status,
         fulfillmentStatus: safeOrder.fulfillment_status,
+        providerStatus,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
-    console.error("Error in get-duitku-payment-status:", err);
+    console.error("Error in get-duitku-payment-status:", err?.message || "unknown error");
     return new Response(
-      JSON.stringify({ error: err.message || "Gagal memproses pengecekan status pesanan." }),
+      JSON.stringify({ error: "Gagal memproses pengecekan status pesanan." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

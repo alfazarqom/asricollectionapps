@@ -146,9 +146,26 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
 
+    if (!verificationInput.trim()) {
+      setErrorMessage('Masukkan email atau nomor telepon yang digunakan saat checkout.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const order = await fetchOrderData(orderNumberInput);
-      setActiveOrder(order);
+      const response = await fetch('/api/orders/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderNumber: orderNumberInput.trim(),
+          phoneOrEmail: verificationInput.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success || !result.order) {
+        throw new Error(result.error || 'Pesanan atau data verifikasi tidak cocok.');
+      }
+      setActiveOrder(result.order);
     } catch (err: any) {
       setErrorMessage(err.message || 'Pesanan tidak ditemukan.');
     } finally {
@@ -364,6 +381,20 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({
                   <span>{errorMessage}</span>
                 </div>
               )}
+
+              <div>
+                <label className="text-[11px] font-medium text-gray-700 block mb-1">
+                  Email atau Nomor Telepon Checkout *
+                </label>
+                <input
+                  type="text"
+                  value={verificationInput}
+                  onChange={(e) => setVerificationInput(e.target.value)}
+                  autoComplete="email"
+                  placeholder="Email atau nomor telepon"
+                  className="w-full h-10 px-3 bg-slate-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-none focus:border-[#2563EB] focus:bg-white"
+                />
+              </div>
 
               <button
                 type="submit"
