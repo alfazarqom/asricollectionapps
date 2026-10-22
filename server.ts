@@ -203,184 +203,78 @@ app.post('/api/duitku-check-status', async (req: Request, res: Response) => {
   }
 });
 
-// 6. POST /api/orders/track (Guest Order Search with optional verification)
-app.post('/api/orders/track', (req: Request, res: Response) => {
-  const { orderNumber, phoneOrEmail } = req.body;
-  if (!orderNumber) {
-    return res.status(400).json({
-      success: false,
-      error: 'Harap masukkan nomor pesanan Anda.',
+// Guest tracking is backed by the canonical Supabase Edge Function, never an in-memory Map.
+app.post('/api/orders/track', async (req: Request, res: Response) => {
+  const endpoint = SUPABASE_URL.replace(/\\/$/, '') + '/functions/v1/get-order-tracking';
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderNumber: req.body?.orderNumber,
+        phoneOrEmail: req.body?.phoneOrEmail,
+      }),
     });
+    const result = await response.json().catch(() => ({ success: false, error: 'Respons tracking tidak valid.' }));
+    return res.status(response.status).json(result);
+  } catch (error: any) {
+    console.error('Canonical order tracking unavailable:', error?.message || 'network error');
+    return res.status(503).json({ success: false, error: 'Layanan tracking tidak tersedia saat ini.' });
   }
-
-  const order = ordersDb.get(orderNumber.trim().toUpperCase());
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan dengan nomor tersebut tidak ditemukan.' });
-  }
-
-  // Jika pelanggan menyertakan phoneOrEmail, validasi kecocokannya
-  if (phoneOrEmail && phoneOrEmail.trim()) {
-    const cleanInput = phoneOrEmail.trim().toLowerCase();
-    const phoneClean = cleanInput.replace(/\D/g, '');
-    const orderPhoneClean = order.customer_phone.replace(/\D/g, '');
-
-    const matches =
-      order.customer_email.toLowerCase() === cleanInput ||
-      (phoneClean.length >= 8 && orderPhoneClean.includes(phoneClean));
-
-    if (!matches) {
-      return res.status(403).json({
-        success: false,
-        error: 'Nomor pesanan cocok, tetapi nomor telepon/email yang dimasukkan tidak sesuai.',
-      });
-    }
-  }
-
-  const { access_token, ...safeOrder } = order;
-  res.json({ success: true, order: safeOrder, accessToken: order.access_token });
 });
 
-// Admin authentication is disabled until an explicit server-side secret is configured.
-app.post('/api/admin/auth', (req: Request, res: Response) => {
-  if (!ADMIN_SECRET_PIN) {
-    return res.status(503).json({ success: false, error: 'Autentikasi admin belum dikonfigurasi di server.' });
+// Admin APIs proxy to the same persistent Supabase-backed implementation used by Vercel rewrites.
+const ADMIN_API_URL = SUPABASE_URL.replace(/\\/$/, '') + '/functions/v1/admin-api';
+async function forwardAdminApi(
+  action: string,
+  req: Request,
+  res: Response,
+  options: { orderNumber?: string; method?: string; body?: unknown } = {},
+) {
+  const endpoint = new URL(ADMIN_API_URL);
+  endpoint.searchParams.set('action', action);
+  if (options.orderNumber) endpoint.searchParams.set('orderNumber', options.orderNumber);
+  if (action === 'orders') {
+    if (typeof req.query.status === 'string') endpoint.searchParams.set('status', req.query.status);
+    if (typeof req.query.search === 'string') endpoint.searchParams.set('search', req.query.search);
   }
-  const pin = typeof req.body?.pin === 'string' ? req.body.pin : '';
-  const expected = Buffer.from(ADMIN_SECRET_PIN);
-  const received = Buffer.from(pin);
-  const valid = expected.length === received.length && crypto.timingSafeEqual(expected, received);
-  if (!valid) return res.status(401).json({ success: false, error: 'PIN admin tidak valid.' });
-  return res.json({ success: true });
+  try {
+    const method = options.method || req.method;
+    const headers: Record<string, string> = {};
+    const pin = req.headers['x-admin-pin'];
+    if (typeof pin === 'string' && pin) headers['x-admin-pin'] = pin;
+    if (method !== 'GET') headers['Content-Type'] = 'application/json';
+    const response = await fetch(endpoint, {
+      method,
+      headers,
+      ...(method !== 'GET' ? { body: JSON.stringify(options.body ?? req.body ?? {}) } : {}),
+    });
+    const result = await response.json().catch(() => ({ success: false, error: 'Respons admin tidak valid.' }));
+    return res.status(response.status).json(result);
+  } catch (error: any) {
+    console.error('Canonical admin API unavailable:', error?.message || 'network error');
+    return res.status(503).json({ success: false, error: 'Layanan admin Supabase tidak tersedia saat ini.' });
+  }
+}
+
+app.post('/api/admin/auth', async (req: Request, res: Response) => {
+  return forwardAdminApi('auth', req, res, { method: 'POST', body: req.body });
 });
 
-const adminAuth = (req: Request, res: Response, next: () => void) => {
-  if (!ADMIN_SECRET_PIN) {
-    return res.status(503).json({ success: false, error: 'Autentikasi admin belum dikonfigurasi di server.' });
-  }
-  const pin = req.headers['x-admin-pin'] as string;
-  if (!pin) return res.status(401).json({ success: false, error: 'Autentikasi admin diperlukan.' });
-  const expected = Buffer.from(ADMIN_SECRET_PIN);
-  const received = Buffer.from(pin);
-  const valid = expected.length === received.length && crypto.timingSafeEqual(expected, received);
-  if (!valid) return res.status(401).json({ success: false, error: 'Otorisasi admin ditolak.' });
-  next();
-};
+app.get('/api/admin/metrics', async (req: Request, res: Response) => {
+  return forwardAdminApi('metrics', req, res);
+});
 
-// 8. GET /api/admin/metrics
-app.get('/api/admin/metrics', adminAuth, (_req: Request, res: Response) => {
-  let totalRevenue = 0;
-  let totalOrders = 0;
-  let pendingCount = 0;
-  let processingCount = 0;
-  let shippedCount = 0;
-  let deliveredCount = 0;
-  let failedCount = 0;
+app.get('/api/admin/orders', async (req: Request, res: Response) => {
+  return forwardAdminApi('orders', req, res);
+});
 
-  for (const order of ordersDb.values()) {
-    totalOrders += 1;
-    if (order.payment_status === 'paid') {
-      totalRevenue += order.total_amount;
-    }
-    if (order.payment_status === 'pending') {
-      pendingCount += 1;
-    }
-    if (order.payment_status === 'failed') {
-      failedCount += 1;
-    }
-    if (order.fulfillment_status === 'processing') {
-      processingCount += 1;
-    }
-    if (order.fulfillment_status === 'shipped') {
-      shippedCount += 1;
-    }
-    if (order.fulfillment_status === 'delivered') {
-      deliveredCount += 1;
-    }
-  }
-
-  res.json({
-    success: true,
-    data: {
-      totalRevenue,
-      totalOrders,
-      pendingCount,
-      processingCount,
-      shippedCount,
-      deliveredCount,
-      failedCount,
-    },
+app.patch('/api/admin/orders/:orderNumber/shipping', async (req: Request, res: Response) => {
+  return forwardAdminApi('shipping', req, res, {
+    orderNumber: String(req.params.orderNumber || '').trim().toUpperCase(),
+    method: 'PATCH',
+    body: req.body,
   });
-});
-
-// 9. GET /api/admin/orders
-app.get('/api/admin/orders', adminAuth, (req: Request, res: Response) => {
-  const statusFilter = (req.query.status as string) || 'all';
-  const search = ((req.query.search as string) || '').toLowerCase();
-
-  const allOrders = Array.from(ordersDb.values());
-
-  const filtered = allOrders.filter((ord) => {
-    // Status filter
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'paid' && ord.payment_status !== 'paid') return false;
-      if (statusFilter === 'pending' && ord.payment_status !== 'pending') return false;
-      if (statusFilter === 'processing' && ord.fulfillment_status !== 'processing') return false;
-      if (statusFilter === 'shipped' && ord.fulfillment_status !== 'shipped') return false;
-      if (statusFilter === 'delivered' && ord.fulfillment_status !== 'delivered') return false;
-    }
-
-    // Search filter
-    if (search) {
-      const matchNo = ord.order_number.toLowerCase().includes(search);
-      const matchName = ord.customer_name.toLowerCase().includes(search);
-      const matchPhone = ord.customer_phone.includes(search);
-      if (!matchNo && !matchName && !matchPhone) return false;
-    }
-
-    return true;
-  });
-
-  // Sort by newest
-  filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-  res.json({ success: true, data: filtered });
-});
-
-// 10. PATCH /api/admin/orders/:orderNumber/shipping (Manual Shipping Management)
-app.patch('/api/admin/orders/:orderNumber/shipping', adminAuth, (req: Request, res: Response) => {
-  const { orderNumber } = req.params;
-  const { courierName, trackingNumber, fulfillmentStatus, shippingCost, shippingNotes } = req.body;
-
-  const order = ordersDb.get(orderNumber);
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
-  }
-
-  // Update fields
-  if (courierName !== undefined) order.courier_name = courierName.trim();
-  if (trackingNumber !== undefined) order.tracking_number = trackingNumber.trim();
-  if (fulfillmentStatus !== undefined) {
-    const validStatuses = ['unfulfilled', 'processing', 'shipped', 'delivered', 'cancelled'];
-    if (validStatuses.includes(fulfillmentStatus)) {
-      order.fulfillment_status = fulfillmentStatus;
-    }
-  }
-  if (shippingNotes !== undefined) order.shipping_notes = shippingNotes.trim();
-
-  // If shipping cost changed by admin, recalculate total
-  if (shippingCost !== undefined && Number(shippingCost) >= 0) {
-    order.shipping_cost = Number(shippingCost);
-    order.total_amount = order.subtotal + order.shipping_cost - order.discount_amount;
-  }
-
-  order.updated_at = new Date().toISOString();
-  order.audit_logs.push({
-    action: 'SHIPPING_UPDATED',
-    timestamp: new Date().toISOString(),
-    details: { courierName, trackingNumber, fulfillmentStatus, shippingCost },
-  });
-
-  res.json({ success: true, order });
 });
 
 // Callback simulation is intentionally not exposed by the application server.
