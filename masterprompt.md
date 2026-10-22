@@ -358,34 +358,40 @@ Daftar secrets dapat menampilkan nama variabel, bukan berarti nilai rahasianya h
 
 File .env.example
 
-# Contoh konfigurasi lokal.
-# Jangan isi dengan kredensial asli.
-
+# Template dokumentasi saja; jangan isi dengan kredensial asli.
 DUITKU_MERCHANT_CODE=
 DUITKU_API_KEY=
 DUITKU_ENV=sandbox
 DUITKU_CALLBACK_URL=
 DUITKU_RETURN_URL=
 
-File .env.example hanya untuk mendokumentasikan konfigurasi. Gunakan Supabase Secrets untuk konfigurasi proyek jarak jauh.
+Untuk pengembangan lokal, Edge Functions secara default membaca secrets dari supabase/functions/.env. Buat file lokal tersebut dan tambahkan ke .gitignore; jangan mengandalkan .env.example sebagai sumber nilai runtime. Jika menggunakan file lain, berikan path secara eksplisit melalui --env-file. Untuk proyek jarak jauh, gunakan Supabase Secrets atau Dashboard. Jangan pernah commit nilai rahasia. Referensi: https://supabase.com/docs/guides/functions/secrets
 
 Integrasi Duitku POP
 
-Duitku POP menyediakan alur pembayaran yang memungkinkan pengguna memilih metode pembayaran melalui halaman pembayaran Duitku.
-
-Backend harus mengikuti dokumentasi resmi Duitku yang berlaku untuk akun merchant, versi API, dan environment yang digunakan.
+Duitku POP menyediakan alur pembayaran melalui halaman pembayaran Duitku. Backend harus mengikuti kontrak POP yang berlaku untuk akun merchant dan environment yang digunakan.
 
 Konfigurasi Environment
 
-Untuk pengujian, gunakan environment Sandbox Duitku. Jangan mencampur endpoint, kredensial, atau transaksi Sandbox dengan Production.
+Untuk pengujian gunakan Sandbox. Jangan mencampur endpoint, kredensial, atau transaksi Sandbox dengan Production. Endpoint Create Invoice yang tercantum pada dokumentasi POP saat revisi dokumen ini:
+- Sandbox: https://api-sandbox.duitku.com/api/merchant/createInvoice
+- Production: https://api-prod.duitku.com/api/merchant/createInvoice
 
-Referensi dokumentasi:
+Kontrak Create Invoice — acuan dokumentasi POP
 
-Website resmi Duitku
+- Method: HTTP POST.
+- Content-Type: application/json.
+- Header wajib yang didokumentasikan: x-duitku-timestamp, x-duitku-signature, dan x-duitku-merchantcode.
+- Timestamp: Unix epoch dalam milidetik.
+- Formula signature header:
+  stringToSign = merchantCode + timestamp
+  signature = HMAC_SHA256(stringToSign, apiKey)
+- Kirim API key hanya dari backend; jangan pernah mengembalikannya ke frontend.
+- Gunakan respons provider yang valid untuk menyimpan reference dan mengembalikan paymentUrl jika tersedia.
+- Jangan mengikuti contoh kode lama yang menonaktifkan verifikasi sertifikat TLS. Verifikasi TLS harus tetap aktif.
+- Pastikan paymentAmount sesuai total itemDetails menurut kontrak Duitku, merchantOrderId unik untuk setiap transaksi baru, serta format mata uang/nominal sesuai dokumentasi yang berlaku.
 
-Dokumentasi developer Duitku
-
-Periksa dokumentasi merchant untuk endpoint, parameter request, format signature, format callback, dan prosedur pengecekan status transaksi yang berlaku. Jangan menebak format autentikasi atau signature.
+Formula di atas adalah acuan dokumentasi POP saat revisi ini ditulis; sebelum rilis atau jika ada ketidaksesuaian, verifikasi kembali halaman resmi dan konfirmasi ke Duitku. Jangan mengasumsikan format dari produk API Duitku lain berlaku untuk POP.
 
 Tanggung Jawab Backend
 
@@ -520,43 +526,52 @@ Terapkan batasan database untuk menjaga integritas data.
 
 Hindari menyimpan data sensitif yang tidak diperlukan.
 
-Row Level Security (RLS)
+Row Level Security (RLS), Grants, dan Akses Edge Functions
 
-Aktifkan RLS pada tabel yang diakses melalui Supabase API.
+Aktifkan RLS pada setiap tabel di schema yang terekspos melalui Supabase API. RLS dan SQL grants adalah dua lapisan berbeda: grants menentukan apakah role boleh menjalankan operasi pada tabel, sedangkan policies menentukan baris mana yang dapat diakses. Tinjau keduanya; jangan menganggap RLS otomatis menghapus grants yang terlalu luas.
 
-Kebijakan akses minimal:
+Kebijakan minimum yang harus dirancang dan diuji:
+- Pengguna hanya dapat membaca pesanan dan item pesanan miliknya.
+- Pengguna tidak dapat mengubah status pembayaran atau harga resmi secara langsung.
+- Data produk publik hanya dapat dibaca sejauh memang ditujukan untuk publik.
+- Operasi administratif dibatasi pada identitas/role tepercaya yang diverifikasi server-side.
+- Callback pembayaran mengakses operasi backend yang diperlukan dan tidak memberi akses publik langsung ke tabel sensitif.
+- Untuk UPDATE, policy harus membatasi baris yang boleh diubah dan memeriksa nilai baru; jangan hanya mengandalkan role authenticated.
+- Periksa view, RPC, trigger, dan fungsi SQL yang mungkin memiliki privilege lebih tinggi atau melewati RLS.
 
-Pengguna hanya dapat membaca pesanan miliknya.
+Untuk setiap tabel exposed, dokumentasikan grants dan policies per operasi (SELECT, INSERT, UPDATE, DELETE), lalu uji akses yang seharusnya diizinkan dan ditolak bagi anon dan authenticated. Gunakan supabase test db bila sesuai dan simpan tes di repository.
 
-Pengguna tidak boleh mengubah status pembayaran secara langsung.
+Jika Edge Function memakai service_role/secret key, batasi di server dan lakukan otorisasi secara eksplisit. Kunci tersebut dapat melewati RLS. Jangan pernah memasukkannya ke frontend atau log.
 
-Pengguna tidak boleh mengubah harga produk resmi melalui request checkout.
+Tentukan kebijakan autentikasi per fungsi:
+- Fungsi yang dipanggil pengguna harus memvalidasi JWT dan otorisasi yang relevan sesuai kebutuhan aplikasi.
+- Callback provider yang harus menerima request server-to-server mungkin perlu dikonfigurasi tanpa verifikasi JWT gateway, tetapi wajib memverifikasi signature callback dan transaksi di dalam handler.
+- Jangan menonaktifkan verify_jwt secara global atau untuk semua fungsi tanpa alasan. Konfigurasi publik tidak menggantikan verifikasi signature, validasi input, rate limiting yang sesuai, dan logging aman.
 
-Operasi administratif dibatasi pada peran yang berwenang.
-
-Callback pembayaran diproses melalui backend tepercaya, bukan melalui akses publik langsung ke tabel.
-
-Jika Edge Function menggunakan service_role key, batasi penggunaannya di server dan lakukan otorisasi secara eksplisit. Kunci tersebut melewati perlindungan RLS sehingga tidak boleh diperlakukan seperti kunci publik.
+Referensi: https://supabase.com/docs/guides/database/postgres/row-level-security dan https://supabase.com/docs/guides/functions/function-configuration.
 
 Verifikasi Callback
 
-Callback pembayaran harus:
+Callback Duitku POP adalah notifikasi server-to-server. Implementasi harus mengikuti format payload yang ditentukan dokumentasi POP; dokumentasi POP mendeskripsikan callback HTTP POST dengan data application/x-www-form-urlencoded. Jangan mengasumsikan payload callback berupa JSON.
 
-Memvalidasi field wajib dan format data.
+Callback harus:
+1. Memvalidasi content type, field wajib, tipe, panjang, dan format nilai.
+2. Memverifikasi signature dengan metode resmi POP. Dokumentasi POP saat revisi ini mencantumkan:
+   stringToSign = merchantCode + amount + merchantOrderId
+   signature = HMAC_SHA256(stringToSign, apiKey)
+   Gunakan nama field, encoding, key, dan perbandingan signature tepat seperti dokumentasi merchant yang berlaku. Jangan gunakan signature MD5 lama.
+3. Mencocokkan merchantCode, merchantOrderId, amount, dan reference/provider transaction reference dengan catatan transaksi yang tersimpan.
+4. Mengevaluasi resultCode dan aturan pemetaan status provider; jangan menyimpulkan sukses dari keberadaan callback saja.
+5. Menolak callback dengan signature tidak valid, nominal berbeda, merchant/referensi tidak cocok, atau transisi status yang tidak diizinkan.
+6. Memproses pembaruan status dalam transaksi database yang aman dan idempoten.
+7. Mengembalikan respons sesuai protokol callback. Duitku menyatakan callback perlu mendapat HTTP 200 OK dan dapat dicoba ulang jika respons 200 tidak diterima; dokumentasi menyebut maksimum lima upaya sebelum pemberitahuan callback gagal. Perilaku untuk callback invalid atau kegagalan database harus ditentukan agar tidak mengakui sukses sebelum perubahan penting tersimpan.
+8. Menulis log operasional secukupnya tanpa API key, signature rahasia, token, atau data pribadi yang tidak diperlukan.
 
-Memverifikasi signature sesuai dokumentasi resmi Duitku.
+Jangan melakukan side effect berulang pada callback duplikat. Gunakan constraint unik dan/atau mekanisme idempotensi di database, kunci transaksi yang konsisten, serta aturan transisi status yang eksplisit. Jika proses gagal sebelum perubahan status tersimpan, jangan mengembalikan respons sukses seolah transaksi sudah diproses.
 
-Mencocokkan merchant, referensi pesanan, jumlah, dan referensi transaksi.
+Jika dibutuhkan untuk menyelesaikan keadaan yang ambigu, gunakan mekanisme pemeriksaan status server-to-server resmi Duitku. Return URL, query parameter browser, dan JavaScript callback bukan sumber kebenaran status pembayaran.
 
-Memastikan transaksi memang berkaitan dengan pesanan yang benar.
-
-Menangani callback duplikat dengan aman.
-
-Menolak perubahan status yang tidak valid.
-
-Mengembalikan respons yang sesuai dengan protokol callback Duitku.
-
-Jika diperlukan, lakukan pengecekan status transaksi melalui mekanisme server-to-server resmi sebelum menetapkan status final. Jangan menganggap callback yang hanya memiliki format JSON valid sebagai bukti pembayaran.
+Catatan: Formula dan perilaku callback di atas harus diverifikasi ulang terhadap halaman POP dan konfigurasi merchant yang aktif sebelum rilis. Jika dokumentasi resmi tidak konsisten atau tidak menjelaskan kasus tertentu, minta konfirmasi tertulis Duitku alih-alih menebak.
 
 API Contract
 
@@ -627,37 +642,43 @@ Contoh:
 supabase start
 supabase functions serve create-payment --env-file .env
 
-Checklist Pengujian
+Checklist Pengujian dan Acceptance Criteria
 
-Permintaan checkout valid berhasil diproses.
+Jalankan pengujian lokal dan Sandbox dengan data non-produksi. Setiap butir dinyatakan lulus hanya jika ada bukti test/log yang aman atau hasil verifikasi yang dapat diulang.
 
-Produk yang tidak ditemukan ditolak.
+Checkout dan Create Invoice:
+- Checkout valid menghasilkan pesanan/transaksi yang konsisten.
+- Produk tidak ditemukan, tidak tersedia, atau kuantitas nol/negatif ditolak.
+- Harga/total yang dimanipulasi di frontend diabaikan; total dihitung dari database.
+- merchantOrderId unik untuk transaksi baru dan request ulang tidak membuat pesanan ganda tanpa sengaja.
+- paymentAmount sama dengan total itemDetails menurut kontrak POP.
+- Timestamp, header, endpoint, dan signature request sesuai dokumentasi POP.
+- Respons provider gagal, timeout, atau tidak valid tidak membuat status paid.
 
-Kuantitas nol atau negatif ditolak.
+Callback:
+- Callback dengan content type/payload valid diparse sesuai format provider.
+- Signature valid diterima; signature salah/kosong ditolak.
+- Merchant code, merchantOrderId, amount, reference, dan resultCode diverifikasi.
+- Nominal berbeda, transaksi tidak dikenal, dan transisi status tidak sah tidak mengubah pesanan menjadi paid.
+- Callback duplikat tidak menggandakan efek samping atau mengurangi stok lebih dari sekali.
+- Kegagalan database tidak dikembalikan sebagai sukses yang menyesatkan.
+- Respons HTTP callback mengikuti kontrak POP; jalur sukses yang telah diproses mengembalikan HTTP 200 OK.
+- Redirect/return URL dan JavaScript frontend tidak dapat mengubah status pembayaran.
 
-Harga dari frontend tidak digunakan sebagai sumber kebenaran.
+Supabase dan keamanan:
+- Grants dan RLS diuji bersama untuk operasi yang diizinkan dan ditolak.
+- Pengguna A tidak dapat membaca/mengubah pesanan pengguna B.
+- Pengguna tidak dapat mengubah harga atau status pembayaran melalui API publik.
+- Autentikasi dan otorisasi diperiksa per Edge Function.
+- Secrets, signature rahasia, token, dan data pelanggan tidak muncul di log atau respons error.
+- Kegagalan provider/database dan request invalid menghasilkan error yang aman serta tidak meninggalkan status transaksi yang tidak konsisten.
 
-Pesanan tidak dapat diakses pengguna lain.
+End-to-end:
+- Alur Sandbox dari checkout, Create Invoice, redirect paymentUrl, callback, hingga pembacaan status backend diuji.
+- Bukti pengujian tidak memuat kredensial atau data pribadi yang tidak perlu.
+- Jangan menggunakan kredensial atau transaksi Production untuk pengujian.
 
-Request Duitku Sandbox menggunakan konfigurasi yang benar.
-
-Kegagalan request provider ditangani tanpa membuat status paid.
-
-Signature callback yang tidak valid ditolak.
-
-Callback dengan jumlah atau referensi yang tidak cocok ditolak.
-
-Callback duplikat tidak memproses transaksi berulang.
-
-Pengguna tidak dapat mengubah status pembayaran melalui API publik.
-
-Secret tidak muncul dalam log atau respons error.
-
-Status pembayaran diperbarui sesuai hasil verifikasi.
-
-Alur pembayaran diuji end-to-end menggunakan fasilitas Sandbox.
-
-Lakukan pengujian menggunakan data transaksi Sandbox. Jangan menguji alur ini dengan kredensial Production.
+Pengujian unit dan integrasi Edge Functions dapat menggunakan panduan resmi: https://supabase.com/docs/guides/functions/unit-test.
 
 Deployment
 
@@ -759,23 +780,27 @@ Periksa idempotensi checkout dan penanganan request berulang
 
 Jangan menampilkan API key, token, signature rahasia, atau data pribadi pelanggan ketika membagikan log error untuk keperluan debugging.
 
-Dokumentasi Resmi
+Dokumentasi Resmi dan Source of Truth
 
-Supabase Documentation
+Supabase:
+- Edge Functions: https://supabase.com/docs/guides/functions
+- Quickstart Edge Functions: https://supabase.com/docs/guides/functions/quickstart
+- Environment variables dan secrets: https://supabase.com/docs/guides/functions/secrets
+- Securing Edge Functions / autentikasi: https://supabase.com/docs/guides/functions/auth
+- Function configuration (termasuk verify_jwt): https://supabase.com/docs/guides/functions/function-configuration
+- Row Level Security, grants, dan policies: https://supabase.com/docs/guides/database/postgres/row-level-security
+- Unit testing Edge Functions: https://supabase.com/docs/guides/functions/unit-test
+- Supabase CLI: https://supabase.com/docs/reference/cli/introduction
 
-Supabase Edge Functions
+Duitku:
+- POP API Reference (Indonesia): https://docs.duitku.com/pop/id/
+- API Reference: https://docs.duitku.com/api/id/
+- FAQ resmi: https://www.duitku.com/frequently-asked-questions/
+- Demo POP Sandbox: https://api-sandbox.duitku.com/demoduitku/
 
-Supabase Database
+Source of truth untuk integrasi Duitku adalah dokumentasi POP yang berlaku untuk akun merchant dan environment yang dipakai. Jangan menggunakan contoh dari produk Duitku lain, dokumentasi lama, blog pihak ketiga, atau signature MD5 yang sudah obsolete sebagai pengganti kontrak POP saat ini.
 
-Supabase Row Level Security
-
-Supabase CLI
-
-Duitku Official Website
-
-Duitku Developer Documentation
-
-Gunakan dokumentasi resmi Duitku untuk memastikan endpoint Sandbox, parameter POP, signature, callback, dan prosedur pemeriksaan status transaksi sesuai dengan versi integrasi yang digunakan.
+Sebelum mengubah kode, periksa ulang halaman resmi karena endpoint, parameter, metode autentikasi, dan perilaku provider dapat berubah. Jika dokumentasi resmi dan implementasi yang ada tampak berbeda, catat perbedaannya dan konfirmasi ke Duitku sebelum menebak atau mengubah kontrak.
 
 Checklist Implementasi
 
