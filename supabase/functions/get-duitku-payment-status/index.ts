@@ -4,28 +4,12 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
-
-// Duitku transactionStatus signature: HMAC_SHA256(merchantCode + merchantOrderId, apiKey).
-async function hmacSha256Hex(key: string, data: string): Promise<string> {
-  const keyBytes = new TextEncoder().encode(key);
-  const dataBytes = new TextEncoder().encode(data);
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyBytes,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, dataBytes);
-  return Array.from(new Uint8Array(signature)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -104,49 +88,11 @@ serve(async (req: Request) => {
       });
     }
 
-    // 3. Read-only provider inquiry. Callback/RPC remains the only payment-state writer.
-    // Duitku API documentation: HMAC_SHA256(merchantCode + merchantOrderId, apiKey).
-    let providerStatus: { statusCode: string; statusMessage?: string; amount?: string; reference?: string } | null = null;
-    if (order.payment_status === "pending") {
-      const checkUrl = DUITKU_ENV === "production"
-        ? "https://api-prod.duitku.com/api/merchant/transactionStatus"
-        : "https://api-sandbox.duitku.com/api/merchant/transactionStatus";
-      const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + cleanOrderNumber);
-
-      try {
-        const duitkuRes = await fetch(checkUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            merchantCode: DUITKU_MERCHANT_CODE,
-            merchantOrderId: cleanOrderNumber,
-            signature,
-          }),
-        });
-        if (duitkuRes.ok) {
-          const result = await duitkuRes.json();
-          if (
-            result?.merchantOrderId === cleanOrderNumber &&
-            result?.amount !== undefined &&
-            Math.abs(Number(result.amount) - Number(order.total_amount)) < 0.01 &&
-            ["00", "01", "02"].includes(String(result.statusCode))
-          ) {
-            providerStatus = {
-              statusCode: String(result.statusCode),
-              statusMessage: typeof result.statusMessage === "string" ? result.statusMessage : undefined,
-              amount: String(result.amount),
-              reference: typeof result.reference === "string" ? result.reference : undefined,
-            };
-          } else {
-            console.error("Duitku status response did not match order identity or amount.");
-          }
-        } else {
-          console.warn("Duitku transaction status request returned HTTP", duitkuRes.status);
-        }
-      } catch (e) {
-        console.warn("Duitku status inquiry failed:", e);
-      }
-    }
+    // 3. Provider-side reconciliation is deliberately not called from this public read endpoint.
+    // The POP docs must be confirmed for the exact transaction-status endpoint/contract before
+    // enabling provider inquiries. This endpoint must never mutate payment state; the verified
+    // callback's atomic RPC is the payment-state source of truth.
+    const providerStatus = null;
 
     // 4. Return Safe Response (Hide Access Token & Secrets)
     const { access_token, order_items, ...safeOrder } = order;
