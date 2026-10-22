@@ -20,6 +20,7 @@ const DUITKU_API_KEY = process.env.DUITKU_API_KEY || '';
 const DUITKU_ENV = process.env.DUITKU_ENV || 'sandbox';
 const ADMIN_SECRET_PIN = process.env.ADMIN_SECRET_PIN || '';
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://mvwflakurihhakdrlteg.supabase.co";
 
 // In-Memory Database Store for live execution & persistence in applet
 interface OrderItem {
@@ -114,309 +115,40 @@ app.get('/api/config-status', (_req: Request, res: Response) => {
   });
 });
 
-// 3. POST /api/create-invoice (Duitku POP Create Invoice & Order Creation)
+// 3. POST /api/create-invoice
+// All invoice creation is delegated to the canonical Supabase Edge Function.
+// Express must never create a second provider invoice or keep a competing local order record.
 app.post('/api/create-invoice', async (req: Request, res: Response) => {
+  const body = req.body || {};
+  if (!body.recipient || !Array.isArray(body.items) || typeof body.courier?.code !== 'string') {
+    return res.status(400).json({ success: false, error: 'Data checkout tidak lengkap atau tidak valid.' });
+  }
+
+  const endpoint = \`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/duitku-create-invoice\`;
   try {
-    const { recipient, items, courier } = req.body;
-
-    // Do not create invoices with local-only callback URLs or missing provider configuration.
-    if (!/^https:\/\//i.test(APP_URL) || /localhost|127\.0\.0\.1/i.test(APP_URL)) {
-      return res.status(503).json({
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipient: body.recipient,
+        items: body.items.map((item: any) => ({ id: item.id, quantity: item.quantity })),
+        // Only forward the courier identifier. The canonical backend determines the price/name.
+        courier: { code: body.courier.code },
+      }),
+    });
+    const result = await response.json().catch(() => ({} as any));
+    if (!response.ok) {
+      return res.status(response.status).json({
         success: false,
-        error: 'Layanan pembayaran memerlukan URL callback publik HTTPS.',
+        error: typeof result?.error === 'string' ? result.error : 'Layanan invoice tidak tersedia.',
       });
     }
-
-    // A. Validasi Data Penerima
-    if (!recipient?.name || !recipient?.phone || !recipient?.email || !recipient?.address) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data penerima tidak lengkap. Mohon lengkapi nama, nomor telepon, email, dan alamat.',
-      });
-    }
-
-    // Validasi format email & nomor telepon
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(recipient.email.trim())) {
-      return res.status(400).json({ success: false, error: 'Format email tidak valid.' });
-    }
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, error: 'Keranjang belanja kosong.' });
-    }
-
-    // B. Validasi Otoritatif Produk & Harga dari Server Supabase
-    // Jangan pernah percaya harga atau total yang dikirim oleh browser!
-    const catalog = await fetchAuthoritativeProducts();
-    const catalogMap = new Map(catalog.map((p: any) => [p.id, p]));
-
-    let calculatedSubtotal = 0;
-    const validatedItems: OrderItem[] = [];
-
-    for (const item of items) {
-      const liveProduct = catalogMap.get(item.id) as any;
-      if (!liveProduct) {
-        return res.status(400).json({
-          success: false,
-          error: `Produk dengan ID "${item.id}" tidak ditemukan dalam katalog resmi toko.`,
-        });
-      }
-
-      if (liveProduct.availability === 'out of stock') {
-        return res.status(400).json({
-          success: false,
-          error: `Maaf, stok produk "${liveProduct.title}" saat ini telah habis.`,
-        });
-      }
-
-      const qty = parseInt(item.quantity, 10);
-      if (isNaN(qty) || qty <= 0) {
-        return res.status(400).json({
-          success: false,
-          error: `Kuantitas produk "${liveProduct.title}" harus lebih besar dari 0.`,
-        });
-      }
-
-      // Gunakan sale_price jika ada, jika tidak gunakan price
-      const authoritativeUnitPrice = liveProduct.sale_price !== null && liveProduct.sale_price !== undefined
-        ? Number(liveProduct.sale_price)
-        : Number(liveProduct.price);
-
-      const itemSubtotal = authoritativeUnitPrice * qty;
-      calculatedSubtotal += itemSubtotal;
-
-      validatedItems.push({
-        id: crypto.randomUUID(),
-        product_id: liveProduct.id,
-        title: liveProduct.title,
-        unit_price: authoritativeUnitPrice,
-        quantity: qty,
-        subtotal: itemSubtotal,
-        image_link: liveProduct.display_image || liveProduct.image_link,
-      });
-    }
-
-    // C. Validasi Ongkos Kirim Otoritatif
-    const validCouriers: Record<string, { name: string; cost: number; etd: string }> = {
-      'jne_reg': { name: 'JNE Reguler', cost: 18000, etd: '2-3 Hari' },
-      'sicepat_reg': { name: 'SiCepat REG', cost: 16000, etd: '1-2 Hari' },
-      'jnt_reg': { name: 'J&T Express', cost: 17000, etd: '2-3 Hari' },
-      'gosend_sameday': { name: 'GoSend Same Day', cost: 25000, etd: '6-8 Jam' },
-      'pickup_store': { name: 'Ambil di Toko', cost: 0, etd: 'Hari ini' },
-    };
-
-    const courierCode = courier?.code || 'sicepat_reg';
-    const selectedCourier = validCouriers[courierCode] || validCouriers['sicepat_reg'];
-    const shippingCost = selectedCourier.cost;
-    const finalTotal = calculatedSubtotal + shippingCost;
-
-    // D. Buat Order ID & Access Token Unik
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomSuffix = Math.floor(10000 + Math.random() * 90000);
-    const orderNumber = `ORD-${dateStr}-${randomSuffix}`;
-    const accessToken = 'tok_' + crypto.randomBytes(24).toString('hex');
-    const orderId = crypto.randomUUID();
-
-    // F. Duitku POP Create Invoice Request
-    const createInvoiceUrl = DUITKU_ENV === 'production'
-      ? 'https://api-prod.duitku.com/api/merchant/createInvoice'
-      : 'https://api-sandbox.duitku.com/api/merchant/createInvoice';
-
-    const timestamp = Date.now().toString();
-    // Official Duitku POP formula: HMAC_SHA256(merchantCode + timestamp, apiKey).
-    const signature = crypto
-      .createHmac('sha256', DUITKU_API_KEY)
-      .update(`${DUITKU_MERCHANT_CODE}${timestamp}`)
-      .digest('hex');
-
-    const callbackUrl = `${APP_URL}/api/duitku-callback`;
-    const returnUrl = `${APP_URL}/orders/${orderNumber}?token=${accessToken}`;
-
-    const itemDetailsPayload = validatedItems.map((it) => ({
-      name: it.title.substring(0, 50),
-      price: it.unit_price,
-      quantity: it.quantity,
-    }));
-
-    if (shippingCost > 0) {
-      itemDetailsPayload.push({
-        name: `Ongkir - ${selectedCourier.name}`,
-        price: shippingCost,
-        quantity: 1,
-      });
-    }
-
-    let reference = '';
-    let paymentUrl = '';
-    let isLiveDuitku = false;
-
-    // 1. Prioritaskan delegasi ke Supabase Edge Function (tempat Supabase Secret DUITKU dikonfigurasi)
-    const supabaseFnUrl = 'https://mvwflakurihhakdrlteg.supabase.co/functions/v1/duitku-create-invoice';
-
-    let delegatedToSupabase = false;
-    try {
-      const edgeRes = await fetch(supabaseFnUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipient,
-          items: validatedItems.map((it) => ({ id: it.product_id, quantity: it.quantity })),
-          courier: selectedCourier,
-        }),
-      });
-
-      if (edgeRes.ok) {
-        const edgeData = await edgeRes.json();
-        if (edgeData.reference) {
-          reference = edgeData.reference;
-          paymentUrl = edgeData.paymentUrl || '';
-          isLiveDuitku = true;
-          delegatedToSupabase = true;
-        }
-      }
-    } catch (err: any) {
-      console.warn('Supabase invoice function request failed:', err?.message || 'network error');
-    }
-
-    // Do not silently switch providers or fabricate a payment URL if the canonical function fails.
-    if (!delegatedToSupabase && DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-      try {
-        const duitkuPayload = {
-          paymentAmount: Math.round(finalTotal),
-          merchantOrderId: orderNumber,
-          productDetails: `Pesanan ${orderNumber} di Asri Collection`,
-          email: recipient.email.trim(),
-          phoneNumber: recipient.phone.trim(),
-          additionalParam: accessToken,
-          merchantUserInfo: recipient.name.trim(),
-          customerVaName: recipient.name.trim(),
-          callbackUrl,
-          returnUrl,
-          expiryPeriod: 60,
-          itemDetails: itemDetailsPayload,
-          customerDetail: {
-            firstName: recipient.name.split(' ')[0] || recipient.name,
-            lastName: recipient.name.split(' ').slice(1).join(' ') || '',
-            email: recipient.email.trim(),
-            phoneNumber: recipient.phone.trim(),
-            shippingAddress: {
-              firstName: recipient.name,
-              address: recipient.address,
-              city: recipient.city || 'Jakarta',
-              postalCode: recipient.postalCode || '12345',
-              phone: recipient.phone,
-              countryCode: 'ID',
-            },
-          },
-        };
-
-        const response = await fetch(createInvoiceUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-duitku-signature': signature,
-            'x-duitku-timestamp': timestamp,
-            'x-duitku-merchantcode': DUITKU_MERCHANT_CODE,
-          },
-          body: JSON.stringify(duitkuPayload),
-        });
-
-        const data = await response.json();
-        if (response.ok && data.statusCode === '00' && data.reference && data.paymentUrl && /^https:\/\//i.test(data.paymentUrl)) {
-          reference = data.reference;
-          paymentUrl = data.paymentUrl;
-          isLiveDuitku = true;
-        } else {
-          console.warn('Duitku API response error:', data);
-          throw new Error(data.statusMessage || 'Gagal membuat invoice di Duitku.');
-        }
-      } catch (err: any) {
-        console.error('Duitku invoice request failed:', err?.message || 'unknown error');
-        throw new Error('Duitku gagal membuat invoice. Silakan coba lagi.');
-      }
-    } else if (!delegatedToSupabase) {
-      throw new Error('Layanan invoice Supabase tidak tersedia dan kredensial Duitku lokal tidak dikonfigurasi.');
-    }
-
-    if (!paymentUrl || !/^https:\/\//i.test(paymentUrl)) {
-      throw new Error('Duitku tidak mengembalikan URL pembayaran HTTPS yang valid.');
-    }
-
-    // Reserve locally only after a real payment URL has been returned.
-    const reservationExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    reservationsDb.set(orderId, {
-      orderId,
-      orderNumber,
-      items: validatedItems.map((it) => ({ productId: it.product_id, quantity: it.quantity })),
-      status: 'reserved',
-      expiresAt: reservationExpiry,
-    });
-
-    // G. Save local order record (in-memory only; not a production database).
-    const newOrder: Order = {
-      id: orderId,
-      order_number: orderNumber,
-      customer_name: recipient.name.trim(),
-      customer_email: recipient.email.trim(),
-      customer_phone: recipient.phone.trim(),
-      shipping_address: recipient.address.trim(),
-      shipping_city: recipient.city || '',
-      shipping_postal_code: recipient.postalCode || '',
-      subtotal: calculatedSubtotal,
-      shipping_cost: shippingCost,
-      discount_amount: 0,
-      total_amount: finalTotal,
-      payment_status: 'pending',
-      fulfillment_status: 'unfulfilled',
-      courier_name: selectedCourier.name,
-      tracking_number: '',
-      shipping_notes: recipient.notes || '',
-      access_token: accessToken,
-      duitku_reference: reference,
-      duitku_payment_url: paymentUrl,
-      items: validatedItems,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      audit_logs: [
-        {
-          action: 'ORDER_CREATED',
-          timestamp: new Date().toISOString(),
-          details: { subtotal: calculatedSubtotal, shippingCost, finalTotal, courier: selectedCourier.name },
-        },
-      ],
-    };
-
-    ordersDb.set(orderNumber, newOrder);
-
-    paymentsDb.set(orderNumber, {
-      orderId,
-      merchantOrderId: orderNumber,
-      reference,
-      amount: finalTotal,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    });
-
-    // Kembalikan HANYA informasi yang aman untuk client
-    res.json({
-      success: true,
-      orderId,
-      orderNumber,
-      accessToken,
-      reference,
-      paymentUrl,
-      totalAmount: finalTotal,
-      subtotal: calculatedSubtotal,
-      shippingCost,
-      isLiveDuitku,
-    });
-  } catch (err: any) {
-    console.error('Create Invoice Error:', err);
-    res.status(500).json({
+    return res.status(200).json(result);
+  } catch (error: any) {
+    console.error('Canonical Supabase invoice function unavailable:', error?.message || 'network error');
+    return res.status(503).json({
       success: false,
-      error: err.message || 'Terjadi kesalahan internal saat memproses invoice pesanan.',
+      error: 'Layanan invoice Supabase tidak tersedia. Tidak ada invoice alternatif yang dibuat.',
     });
   }
 });
@@ -427,52 +159,48 @@ app.post('/api/duitku-callback', (_req: Request, res: Response) => {
   return res.status(503).send('Service Unavailable: use the canonical Supabase Duitku callback endpoint.');
 });
 
-// 5. GET /api/orders/:orderNumber (Customer Secure Order Lookup with auto Duitku sync)
+// 5. GET /api/orders/:orderNumber
+// Read status from the canonical Supabase function; do not consult local in-memory order state.
 app.get('/api/orders/:orderNumber', async (req: Request, res: Response) => {
-  const { orderNumber } = req.params;
-  const token = req.query.token as string;
-  const phone = req.query.phone as string;
-  const email = req.query.email as string;
-
-  const order = ordersDb.get(orderNumber);
-  if (!order) {
-    return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
+  const orderNumber = String(req.params.orderNumber || '').trim();
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!orderNumber || !token) {
+    return res.status(400).json({ success: false, error: 'Nomor pesanan dan token akses wajib diisi.' });
   }
 
-  // Pengamanan Otorisasi: Verifikasi token ATAU no telepon / email pelanggan
-  const isAuthorized =
-    (token && token === order.access_token) ||
-    (phone && order.customer_phone.includes(phone.replace(/\D/g, ''))) ||
-    (email && order.customer_email.toLowerCase() === email.toLowerCase());
-
-  if (!isAuthorized) {
-    return res.status(403).json({
-      success: false,
-      error: 'Akses ditolak. Token akses tidak valid atau data verifikasi tidak cocok.',
-    });
+  const endpoint = new URL(\`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-duitku-payment-status\`);
+  endpoint.searchParams.set('orderNumber', orderNumber);
+  endpoint.searchParams.set('token', token);
+  try {
+    const response = await fetch(endpoint);
+    const result = await response.json().catch(() => ({} as any));
+    return res.status(response.status).json(result);
+  } catch (error: any) {
+    console.error('Canonical Supabase order status function unavailable:', error?.message || 'network error');
+    return res.status(503).json({ success: false, error: 'Status pesanan tidak dapat diambil saat ini.' });
   }
-
-  // Payment status is changed only by the verified Supabase callback RPC.
-  // Do not reconcile or mutate payment state from a browser-facing read endpoint.
-
-  // Sembunyikan token dari respons
-  const { access_token, ...safeOrder } = order;
-  res.json({ success: true, order: safeOrder });
 });
 
-// 5b. POST /api/duitku-check-status (read-only local status)
-app.post('/api/duitku-check-status', (req: Request, res: Response) => {
-  const { orderNumber, token } = req.body || {};
-  const order = typeof orderNumber === 'string' ? ordersDb.get(orderNumber) : undefined;
-  if (!order) return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
-  if (!token || token !== order.access_token) {
-    return res.status(403).json({ success: false, error: 'Token akses pesanan wajib dan harus valid.' });
+// 5b. POST /api/duitku-check-status
+// Read-only proxy to the canonical status endpoint. This route never calls Duitku or mutates payment state.
+app.post('/api/duitku-check-status', async (req: Request, res: Response) => {
+  const orderNumber = typeof req.body?.orderNumber === 'string' ? req.body.orderNumber : '';
+  const token = typeof req.body?.token === 'string' ? req.body.token : '';
+  if (!orderNumber.trim() || !token) {
+    return res.status(400).json({ success: false, error: 'Nomor pesanan dan token akses wajib diisi.' });
   }
-  return res.json({
-    success: true,
-    paymentStatus: order.payment_status,
-    reconciliation: 'disabled_until_official_POP_contract_is_confirmed',
-  });
+
+  const endpoint = new URL(\`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/get-duitku-payment-status\`);
+  endpoint.searchParams.set('orderNumber', orderNumber.trim());
+  endpoint.searchParams.set('token', token);
+  try {
+    const response = await fetch(endpoint);
+    const result = await response.json().catch(() => ({} as any));
+    return res.status(response.status).json(result);
+  } catch (error: any) {
+    console.error('Canonical Supabase payment status function unavailable:', error?.message || 'network error');
+    return res.status(503).json({ success: false, error: 'Status pembayaran tidak dapat diambil saat ini.' });
+  }
 });
 
 // 6. POST /api/orders/track (Guest Order Search with optional verification)
