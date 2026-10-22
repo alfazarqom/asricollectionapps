@@ -28,19 +28,13 @@ async function hmacSha256Hex(key: string, data: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Helper: SHA256 hex digest (standard fallback)
-async function sha256Hex(str: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
   }
 
   try {
@@ -49,7 +43,21 @@ serve(async (req: Request) => {
     const DUITKU_ENV = Deno.env.get("DUITKU_ENV") || "sandbox";
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const APP_URL = Deno.env.get("APP_URL") || "https://example.com";
+    const APP_URL = Deno.env.get("APP_URL") || "";
+    const DUITKU_CALLBACK_URL = Deno.env.get("DUITKU_CALLBACK_URL") || "";
+    const DUITKU_RETURN_URL = Deno.env.get("DUITKU_RETURN_URL") || "";
+
+    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !APP_URL) {
+      console.error("Invoice configuration is incomplete; refusing to create an order or invoice.");
+      return new Response(JSON.stringify({ error: "Payment service is not configured." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!["sandbox", "production"].includes(DUITKU_ENV)) {
+      return new Response(JSON.stringify({ error: "DUITKU_ENV must be sandbox or production." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -79,14 +87,13 @@ serve(async (req: Request) => {
     // JANGAN percaya harga dari client/browser!
     let authoritativeCatalog: any[] = [];
     const { data: dbProducts, error: dbErr } = await supabase.from("products").select("*");
-    if (!dbErr && dbProducts && dbProducts.length > 0) {
-      authoritativeCatalog = dbProducts;
-    } else {
-      const catalogResponse = await fetch("https://mvwflakurihhakdrlteg.supabase.co/functions/v1/get-products");
-      if (catalogResponse.ok) {
-        authoritativeCatalog = await catalogResponse.json();
-      }
+    if (dbErr || !Array.isArray(dbProducts)) {
+      console.error("Could not load authoritative product catalog:", dbErr?.message || "invalid catalog response");
+      return new Response(JSON.stringify({ error: "Katalog produk tidak dapat diverifikasi. Silakan coba lagi." }), {
+        status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    authoritativeCatalog = dbProducts;
     const catalogMap = new Map(authoritativeCatalog.map((p: any) => [p.id, p]));
 
     let calculatedSubtotal = 0;
@@ -187,16 +194,26 @@ serve(async (req: Request) => {
       ...it,
       order_id: orderId,
     }));
-    await supabase.from("order_items").insert(itemsToInsert);
+    const { error: itemsError } = await supabase.from("order_items").insert(itemsToInsert);
+    if (itemsError) {
+      await supabase.from("orders").delete().eq("id", orderId);
+      throw new Error("Gagal menyimpan item pesanan.");
+    }
 
-    // Buat inventory reservation atomik
+    // Reservation is requested through the database function. Do not continue on an RPC error.
     for (const it of validatedItems) {
-      await supabase.rpc("reserve_inventory_atomic", {
+      const { data: reservationResult, error: reservationError } = await supabase.rpc("reserve_inventory_atomic", {
         p_order_id: orderId,
         p_product_id: it.product_id,
         p_quantity: it.quantity,
         p_minutes: 60,
       });
+      if (reservationError || reservationResult?.success === false) {
+        console.error("Inventory reservation failed:", reservationError?.message || reservationResult?.message);
+        await supabase.from("order_items").delete().eq("order_id", orderId);
+        await supabase.from("orders").delete().eq("id", orderId);
+        throw new Error("Stok tidak dapat direservasi. Pesanan belum dibuat.");
+      }
     }
 
     // 6. Buat Signature & Request ke Duitku POP
@@ -208,8 +225,20 @@ serve(async (req: Request) => {
     // Formula resmi Duitku POP: HMAC_SHA256(merchantCode + timestamp, apiKey)
     const signature = await hmacSha256Hex(DUITKU_API_KEY, DUITKU_MERCHANT_CODE + timestamp);
 
-    const callbackUrl = Deno.env.get("DUITKU_CALLBACK_URL") || `${APP_URL}/api/duitku-callback`;
-    const returnUrl = Deno.env.get("DUITKU_RETURN_URL") || `${APP_URL}/orders/${orderNumber}?token=${accessToken}`;
+    const callbackUrl = DUITKU_CALLBACK_URL || `${APP_URL.replace(/\\/$/, "")}/api/duitku-callback`;
+    const returnUrl = DUITKU_RETURN_URL || `${APP_URL.replace(/\\/$/, "")}/orders/${orderNumber}?token=${accessToken}`;
+    for (const [label, value] of [["callback", callbackUrl], ["return", returnUrl]]) {
+      try {
+        const parsed = new URL(value);
+        if (parsed.protocol !== "https:" && !(DUITKU_ENV === "sandbox" && parsed.hostname === "localhost")) {
+          throw new Error("HTTPS is required for public payment URLs.");
+        }
+      } catch (_error) {
+        return new Response(JSON.stringify({ error: `URL ${label} tidak valid atau tidak aman.` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const itemDetailsPayload = validatedItems.map((it) => ({
       name: it.title.substring(0, 50),
@@ -257,44 +286,52 @@ serve(async (req: Request) => {
     let reference = "";
     let paymentUrl = "";
 
-    // Panggil Duitku jika credentials ada, atau gunakan sandbox simulation jika kosong
-    if (DUITKU_MERCHANT_CODE && DUITKU_API_KEY) {
-      const duitkuResponse = await fetch(createInvoiceUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-duitku-signature": signature,
-          "x-duitku-timestamp": timestamp,
-          "x-duitku-merchantcode": DUITKU_MERCHANT_CODE,
-        },
-        body: JSON.stringify(duitkuPayload),
-      });
+    const duitkuResponse = await fetch(createInvoiceUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-duitku-signature": signature,
+        "x-duitku-timestamp": timestamp,
+        "x-duitku-merchantcode": DUITKU_MERCHANT_CODE,
+      },
+      body: JSON.stringify(duitkuPayload),
+    });
 
-      const duitkuResult = await duitkuResponse.json();
-
-      if (duitkuResult.statusCode === "00" && duitkuResult.reference) {
-        reference = duitkuResult.reference;
-        paymentUrl = duitkuResult.paymentUrl || "";
-      } else {
-        throw new Error(duitkuResult.statusMessage || "Duitku menolak pembuatan invoice.");
-      }
-    } else {
-      // Sandbox fallback token untuk mode testing lokal/staging
-      reference = `DSANDBOX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-      paymentUrl = `https://sandbox-duitku-preview.local/pay/${reference}`;
+    let duitkuResult: any;
+    try {
+      duitkuResult = await duitkuResponse.json();
+    } catch (_error) {
+      throw new Error(`Duitku returned a non-JSON response (HTTP ${duitkuResponse.status}).`);
     }
 
-    // Update order dengan referensi Duitku
-    await supabase
-      .from("orders")
-      .update({
-        duitku_reference: reference,
-        duitku_payment_url: paymentUrl,
-      })
-      .eq("id", orderId);
+    if (!duitkuResponse.ok || duitkuResult?.statusCode !== "00" || !duitkuResult?.reference || !duitkuResult?.paymentUrl) {
+      console.error("Duitku invoice request failed:", { httpStatus: duitkuResponse.status, statusCode: duitkuResult?.statusCode });
+      throw new Error("Duitku gagal membuat invoice. Silakan coba lagi.");
+    }
+    reference = String(duitkuResult.reference);
+    paymentUrl = String(duitkuResult.paymentUrl);
 
-    // Catat record awal ke tabel payments
-    await supabase.from("payments").insert({
+    let parsedPaymentUrl: URL;
+    try {
+      parsedPaymentUrl = new URL(paymentUrl);
+    } catch (_error) {
+      throw new Error("Duitku returned an invalid payment URL.");
+    }
+    if (parsedPaymentUrl.protocol !== "https:") {
+      throw new Error("Duitku returned a non-HTTPS payment URL.");
+    }
+
+    // Update order with the provider reference. A database error must not be ignored.
+    const { error: orderUpdateError } = await supabase
+      .from("orders")
+      .update({ duitku_reference: reference, duitku_payment_url: paymentUrl })
+      .eq("id", orderId);
+    if (orderUpdateError) {
+      console.error("Failed to persist Duitku reference:", orderUpdateError.message);
+      throw new Error("Invoice dibuat tetapi gagal menyimpan referensi pembayaran. Hubungi admin sebelum mencoba ulang.");
+    }
+
+    const { error: paymentInsertError } = await supabase.from("payments").insert({
       order_id: orderId,
       merchant_order_id: orderNumber,
       reference,
@@ -307,6 +344,10 @@ serve(async (req: Request) => {
       environment: DUITKU_ENV,
       status: "pending",
     });
+    if (paymentInsertError) {
+      console.error("Failed to persist payment record:", paymentInsertError.message);
+      throw new Error("Invoice dibuat tetapi gagal menyimpan catatan pembayaran. Hubungi admin.");
+    }
 
     // Kembalikan HANYA data yang diperlukan frontend (tanpa secrets!)
     return new Response(
