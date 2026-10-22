@@ -120,10 +120,10 @@ app.post('/api/create-invoice', async (req: Request, res: Response) => {
     const { recipient, items, courier } = req.body;
 
     // Do not create invoices with local-only callback URLs or missing provider configuration.
-    if (!DUITKU_MERCHANT_CODE || !DUITKU_API_KEY || !/^https:\/\//i.test(APP_URL) || /localhost|127\.0\.0\.1/i.test(APP_URL)) {
+    if (!/^https:\/\//i.test(APP_URL) || /localhost|127\.0\.0\.1/i.test(APP_URL)) {
       return res.status(503).json({
         success: false,
-        error: 'Layanan pembayaran belum dikonfigurasi dengan URL callback publik HTTPS.',
+        error: 'Layanan pembayaran memerlukan URL callback publik HTTPS.',
       });
     }
 
