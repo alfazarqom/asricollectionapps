@@ -58,9 +58,9 @@ Ini adalah temuan untuk dianalisis, bukan persetujuan otomatis untuk mengubah da
 
 ### 5. Express dan deployment
 
-`server.ts` menggunakan `Map` untuk pesanan, pembayaran, dan reservasi lokal. Penyimpanan ini tidak persisten dan tidak dapat menjadi sumber status pesanan produksi. `vercel.json` mengarahkan beberapa route ke Edge Functions tetapi tidak menyediakan route backend untuk endpoint admin Express.
+`server.ts` masih memiliki `Map` untuk endpoint admin/tracking lama, tetapi pembuatan invoice dan pembacaan status kini didelegasikan ke Edge Functions kanonis. Karena checkout baru tidak menulis ke Map tersebut, endpoint admin/tracking lokal yang masih membaca Map tidak akan menampilkan order baru. Penyimpanan itu tidak persisten dan tidak dapat menjadi sumber status pesanan produksi. `vercel.json` mengarahkan beberapa route ke Edge Functions tetapi tidak menyediakan route backend untuk endpoint admin Express.
 
-Branch audit ini menghapus data contoh pesanan yang otomatis ditanam, menonaktifkan simulasi callback aplikasi, mencegah URL invoice palsu, dan membuat endpoint callback Express tidak dapat mengubah status pembayaran. Perubahan tersebut hanya ada di branch ini sampai ditinjau dan di-merge/deploy secara terpisah.
+Branch audit ini menghapus data contoh pesanan yang otomatis ditanam, menghapus fallback pembuatan invoice langsung dari Express ke Duitku, mencegah URL invoice palsu, mengarahkan invoice/status ke fungsi Supabase kanonis, menonaktifkan simulasi callback aplikasi, dan membuat endpoint callback Express tidak dapat mengubah status pembayaran. Perubahan tersebut hanya ada di branch ini sampai ditinjau dan di-merge/deploy secara terpisah.
 
 ## Rencana rekonsiliasi yang disarankan
 
