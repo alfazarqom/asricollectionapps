@@ -1,5 +1,7 @@
 import {createRoot} from 'react-dom/client';
+import { ThemeProvider, StyledEngineProvider } from '@mui/material/styles';
 import App from './App.tsx';
+import { asriTheme } from './theme';
 import './index.css';
 
 // ============================================================================
@@ -67,4 +69,10 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(
+  <StyledEngineProvider enableCssLayer>
+    <ThemeProvider theme={asriTheme}>
+      <App />
+    </ThemeProvider>
+  </StyledEngineProvider>
+);
