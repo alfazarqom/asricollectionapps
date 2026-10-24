@@ -1,0 +1,53 @@
+@import url("https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Open Sans", sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+  }
+}
+
+@utility container {
+  width: 100%;
+  max-width: 1320px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+.slick-prev,
+.slick-next {
+  z-index: 10;
+}
+
+.slick-prev {
+  left: 16px;
+}
+
+.slick-next {
+  right: 16px;
+}
+
+.slick-prev:before,
+.slick-next:before {
+  font-size: 28px;
+  color: white;
+}
+
+.slick-dots {
+  bottom: 20px !important;
+}
+
+.slick-dots li button:before {
+  color: white;
+  font-size: 13px !important;
+  opacity: 1 !important;
+  color: #f7f7f7 !important;
+}
+.slick-dots li.slick-active button:before {
+  color: #fe9a00 !important;
+  font-size: 16px !important;
+}
