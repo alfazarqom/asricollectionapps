@@ -1,8 +1,0 @@
-{
-  "name": "Asri Collection App",
-  "description": "Toko online mobile-only modern dengan integrasi pembayaran Duitku POP, guest checkout bertahap, dan manajemen pesanan.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
