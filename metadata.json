@@ -1,0 +1,8 @@
+{
+  "name": "Asri Collection",
+  "description": "Toko online modern dan premium Asri Collection dengan koleksi busana kurasi elegan, navigasi cepat, dan alur belanja terpercaya.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

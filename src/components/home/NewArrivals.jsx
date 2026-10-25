@@ -1,85 +1,39 @@
-import { ArrowRight, Star, ShoppingCart } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useCart } from "../../hooks/useCart";
+import ProductCard from "../product/ProductCard";
 
-const NewArrivals = ({ products }) => {
-  const { cartItems, addToCart } = useCart();
-  const isInCart = (productId) => {
-    return cartItems.some((item) => item.id === productId);
-  };
+const NewArrivals = ({ products = [] }) => {
+  if (!products || products.length === 0) return null;
+
   return (
-    <section className="py-4">
-      <div className="container">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="md:text-2xl text-xl font-bold text-slate-900">
-            New Arrivals
-          </h2>
-
-          <button className="flex items-center gap-2 md:text-base text-sm font-semibold text-slate-700 transition hover:text-amber-500 cursor-pointer">
-            <Link to="/products" className="flex items-center gap-1">
-              View All
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {products.map((product) => (
-            <div
-              key={product.id}
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
-            >
-              {/* Product Image */}
-              <Link to={`/products/${product.id}`}>
-                <div className="relative  h-55 bg-slate-50 flex items-center justify-center rounded-t-3xl">
-                  <img
-                    src={product.thumbnail}
-                    alt={product.title}
-                    loading="lazy"
-                    className="max-h-40 max-w-full object-contain transition-transform duration-300 hover:scale-105"
-                  />
-                </div>
-              </Link>
-              {/* Product Info */}
-              <div className="p-3">
-                <h3 className="mb-2 text-sm font-semibold text-slate-900">
-                  {product.title}
-                </h3>
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex">
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        className="h-2.5 w-2.5 fill-amber-400 text-amber-400"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs text-slate-500">
-                    ({product.rating})
-                  </span>
-                </div>
-                <div className="flex items-center justify-between ">
-                  <p className="text-base font-bold text-slate-900 mb-3">
-                    ${product.price}
-                  </p>
-                  <button
-                    onClick={() => addToCart(product)}
-                    disabled={isInCart(product.id)}
-                    className={`flex gap-2 items-center justify-center rounded-xl bg-black px-3 py-2 text-white text-sm font-medium hover:bg-amber-500 transition cursor-pointer
-                      ${
-                        isInCart(product.id)
-                          ? "cursor-not-allowed! opacity-50  hover:bg-black"
-                          : "bg-slate-900 text-white hover:bg-slate-800"
-                      }`}
-                  >
-                    Add to cart
-                    <ShoppingCart
-                      className="h-4 w-4 text-white"
-                      title="Add to Cart"
-                    />
-                  </button>
-                </div>
-              </div>
+    <section className="py-14 sm:py-20 bg-[#FDFCFA]">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-8 sm:mb-12 gap-4 pb-4 border-b border-stone-200">
+          <div>
+            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#9A3412] mb-2">
+              <Sparkles className="w-3.5 h-3.5" />
+              Koleksi Terbaru
             </div>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-normal text-stone-900 tracking-tight">
+              New Arrivals
+            </h2>
+            <p className="mt-1 text-sm text-stone-600 max-w-xl">
+              Rilisan busana dan aksesoris terkini dengan sentuhan modern, material sejuk, dan siluet anggun.
+            </p>
+          </div>
+
+          <Link
+            to="/products"
+            className="group inline-flex items-center gap-2 text-xs sm:text-sm font-semibold tracking-wider uppercase text-stone-900 hover:text-[#9A3412] transition-colors shrink-0"
+          >
+            <span>Lihat Semua</span>
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
+          {products.map((product) => (
+            <ProductCard key={product.id} product={product} />
           ))}
         </div>
       </div>

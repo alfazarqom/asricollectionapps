@@ -1,20 +1,23 @@
-import { ShoppingCart } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 
 const CartButton = ({ count = 0, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    aria-label="Open shopping cart"
-    aria-expanded={count > 0}
-    aria-haspopup="true"
-    className="relative p-1 text-slate-700 transition-colors hover:text-slate-950 cursor-pointer"
+    aria-label={`Buka keranjang belanja (${count} barang)`}
+    className="relative flex h-10 items-center gap-2 rounded-xl px-3 py-2 text-stone-800 transition-all hover:bg-stone-100 hover:text-stone-950 active:scale-95 cursor-pointer"
   >
-    <ShoppingCart className="h-6 w-6" />
-    {count > 0 && (
-      <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-        {count}
-      </span>
-    )}
+    <div className="relative">
+      <ShoppingBag className="h-5 w-5" strokeWidth={1.8} />
+      {count > 0 && (
+        <span className="absolute -right-2 -top-1.5 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-stone-900 px-1 text-[10px] font-bold text-white tabular-nums font-mono shadow-xs animate-in zoom-in-75">
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </div>
+    <span className="hidden sm:inline-block text-xs font-semibold tracking-wide uppercase">
+      Keranjang
+    </span>
   </button>
 );
 

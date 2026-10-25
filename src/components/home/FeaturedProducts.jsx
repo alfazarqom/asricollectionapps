@@ -1,86 +1,35 @@
-import { ArrowRight, Star, ShoppingCart } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useCart } from "../../hooks/useCart";
+import { ArrowRight, Sparkles } from "lucide-react";
+import ProductCard from "../product/ProductCard";
 
-const FeaturedProducts = ({ products }) => {
-  const { cartItems, addToCart } = useCart();
-  const isInCart = (productId) => {
-    return cartItems.some((item) => item.id === productId);
-  };
+const FeaturedProducts = ({ products = [] }) => {
   return (
-    <section className="py-4">
+    <section className="py-12 lg:py-16 bg-[#FAF8F5]" aria-label="Produk Pilihan">
       <div className="container">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="md:text-2xl text-xl font-bold text-slate-900">
-            Featured Products
-          </h2>
+        {/* Section Header */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
-            <button className="flex items-center gap-2 md:text-base text-sm font-semibold text-slate-700 transition hover:text-amber-500 cursor-pointer">
-              <Link to="/products" className="flex items-center gap-1">
-                View All
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {products.map((product) => (
-            <div
-              key={product.id}
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg"
-            >
-              {/* Product Image */}
-              <Link to={`/products/${product.id}`}>
-                <div className="relative  h-60 bg-slate-50 flex items-center justify-center rounded-t-3xl">
-                  <img
-                    src={product.thumbnail}
-                    alt={product.title}
-                    loading="lazy"
-                    className="max-h-50 max-w-full object-contain transition-transform duration-300 hover:scale-105"
-                  />
-                </div>
-              </Link>
-              {/* Product Info */}
-              <div className="p-3">
-                <h3 className="mb-2 text-base font-semibold text-slate-900">
-                  {product.title}
-                </h3>
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex">
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        className="h-3 w-3 fill-amber-400 text-amber-400"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-sm text-slate-500">
-                    ({product.rating})
-                  </span>
-                </div>
-                <div className="flex items-center justify-between ">
-                  <p className="text-base font-bold text-slate-900 ">
-                    ${product.price}
-                  </p>
-                  <button
-                    onClick={() => addToCart(product)}
-                    disabled={isInCart(product.id)}
-                    className={`flex gap-2 items-center justify-center rounded-xl bg-black px-3 py-2 text-white text-sm font-medium hover:bg-amber-500 transition cursor-pointer
-                      ${
-                        isInCart(product.id)
-                          ? "cursor-not-allowed! opacity-50  hover:bg-black"
-                          : "bg-slate-900 text-white hover:bg-slate-800"
-                      }`}
-                  >
-                    Add to cart
-                    <ShoppingCart
-                      className="h-4 w-4 text-white"
-                      title="Add to Cart"
-                    />
-                  </button>
-                </div>
-              </div>
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-stone-500">
+              <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+              <span>Kurasi Terbaik</span>
             </div>
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-stone-900 mt-1">
+              Produk Pilihan Asri
+            </h2>
+          </div>
+          <Link
+            to="/products"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-900 hover:text-stone-600 transition-colors"
+          >
+            <span>Lihat Semua Katalog</span>
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        {/* Product Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-6">
+          {products.map((product) => (
+            <ProductCard key={product.id} product={product} />
           ))}
         </div>
       </div>

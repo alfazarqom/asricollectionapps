@@ -1,5 +1,6 @@
 import ReactSlick from "react-slick";
 import { Link } from "react-router-dom";
+import { ArrowRight, Sparkles } from "lucide-react";
 
 // Vite may expose this CommonJS package as either the component or a module wrapper.
 const Slider = ReactSlick.default ?? ReactSlick;
@@ -7,24 +8,30 @@ const Slider = ReactSlick.default ?? ReactSlick;
 const slides = [
   {
     id: 1,
-    title: "Summer Collection 2026",
-    subtitle: "Up to 50% Off",
-    image:
-      "https://images.unsplash.com/photo-1483181994834-aba9fd1e251a?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+    tagline: "Koleksi Eksklusif 2026",
+    title: "Elegansi Busana Modest & Kontemporer",
+    subtitle: "Kombinasi potongan anggun, bahan premium yang sejuk, dan detail jahitan presisi untuk menyempurnakan hari istimewa Anda.",
+    cta: "Jelajahi Koleksi",
+    link: "/products?category=womens-dresses",
+    image: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1920&auto=format&fit=crop&q=85",
   },
   {
     id: 2,
-    title: "New Fashion Arrivals",
-    subtitle: "Trending Now",
-    image:
-      "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1600&q=80",
+    tagline: "Tren Terkini",
+    title: "Koleksi Gaun & Blouse Pilihan",
+    subtitle: "Rancangan feminin modern yang dirancang khusus untuk kenyamanan aktivitas harian hingga acara formal.",
+    cta: "Lihat Semua Gaun",
+    link: "/products?category=womens-dresses",
+    image: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=1920&auto=format&fit=crop&q=85",
   },
   {
     id: 3,
-    title: "Premium Lifestyle Products",
-    subtitle: "Shop the Best Deals",
-    image:
-      "https://plus.unsplash.com/premium_photo-1683121817275-85d1dcf9e4c4?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
+    tagline: "Aksesoris & Tas Kurasi",
+    title: "Lengkapi Penampilan Anggun Anda",
+    subtitle: "Tas tangan desainer, hijab premium, dan aksesoris elegan untuk sentuhan akhir yang memikat.",
+    cta: "Belanja Tas & Aksesoris",
+    link: "/products?category=womens-bags",
+    image: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1920&auto=format&fit=crop&q=85",
   },
 ];
 
@@ -32,42 +39,65 @@ const HeroSlider = () => {
   const settings = {
     dots: true,
     infinite: true,
-    speed: 500,
+    speed: 700,
     slidesToShow: 1,
     slidesToScroll: 1,
     autoplay: true,
-    autoplaySpeed: 3000,
-    arrows: true,
+    autoplaySpeed: 5500,
+    arrows: false,
     pauseOnHover: true,
   };
 
   return (
-    <section className="py-0 overflow-hidden md:mx-8 mx-2 md:mt-20 mt-18">
+    <section className="relative w-full overflow-hidden" aria-label="Hero Banner Asri Collection">
       <Slider {...settings}>
         {slides.map((slide) => (
-          <div key={slide.id}>
-            <div className="relative md:h-175 h-100 overflow-hidden rounded-2xl">
+          <div key={slide.id} className="relative outline-none">
+            <div className="relative min-h-[460px] sm:min-h-[520px] lg:min-h-[580px] w-full flex items-center overflow-hidden bg-stone-900">
+              {/* Background Image */}
               <img
                 src={slide.image}
                 alt={slide.title}
-                loading="lazy"
-                className="h-full w-full object-cover"
+                loading="eager"
+                className="absolute inset-0 h-full w-full object-cover object-center filter brightness-[0.82] transition-transform duration-1000 ease-out"
               />
 
-              <div className="absolute inset-0 bg-black/40" />
+              {/* Editorial Gradient Scrim */}
+              <div className="absolute inset-0 bg-gradient-to-r from-stone-950/85 via-stone-950/50 to-transparent" />
 
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-white px-6">
-                <p className="mb-2 text-xl font-medium text-white">
-                  {slide.subtitle}
-                </p>
+              {/* Slide Content */}
+              <div className="container relative z-10 py-12 lg:py-20 text-white">
+                <div className="max-w-xl space-y-4">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold tracking-wider uppercase backdrop-blur-xs text-amber-200">
+                    <Sparkles className="h-3 w-3" />
+                    <span>{slide.tagline}</span>
+                  </div>
 
-                <h1 className="my-8 md:text-5xl text-3xl font-bold leading-tight">
-                  {slide.title}
-                </h1>
+                  <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold leading-[1.15] tracking-tight text-white">
+                    {slide.title}
+                  </h1>
 
-                <button className="rounded-xl bg-amber-500 px-8 py-3 font-semibold text-white transition hover:bg-slate-100 hover:text-slate-950 cursor-pointer">
-                  <Link to="/products">Shop Now</Link>
-                </button>
+                  <p className="text-xs sm:text-sm text-stone-200 leading-relaxed max-w-lg">
+                    {slide.subtitle}
+                  </p>
+
+                  <div className="pt-2 flex flex-wrap items-center gap-3">
+                    <Link
+                      to={slide.link}
+                      className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-xs font-bold text-stone-900 shadow-md hover:bg-stone-100 active:scale-[0.98] transition-all"
+                    >
+                      <span>{slide.cta}</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+
+                    <Link
+                      to="/products"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/40 bg-white/10 px-5 py-3 text-xs font-semibold text-white backdrop-blur-xs hover:bg-white/20 transition-all"
+                    >
+                      <span>Semua Produk</span>
+                    </Link>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

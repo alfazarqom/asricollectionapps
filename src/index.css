@@ -1,21 +1,32 @@
-@import url("https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Open Sans", sans-serif;
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Playfair Display", Georgia, Cambria, "Times New Roman", serif;
+  --color-warm-ivory: #FAF8F5;
+  --color-warm-beige: #F4EFEA;
+  --color-warm-taupe: #E7DFD5;
+  --color-earth-charcoal: #1C1917;
+  --color-brand-terracotta: #9A3412;
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    font-family: var(--font-sans);
+  }
   body {
     font-family: var(--font-sans);
+    background-color: #FAF8F5;
+    color: #1C1917;
   }
 }
 
 @utility container {
   width: 100%;
-  max-width: 1320px;
+  max-width: 1360px;
   margin-inline: auto;
-  padding-inline: 16px;
+  padding-inline: 20px;
 }
 
 .slick-prev,
