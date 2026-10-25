@@ -8,26 +8,16 @@ const ProductFilter = ({
   categories = [],
 }) => {
   const priceRanges = [
-    { value: "all", label: "All Prices" },
-    { value: "0-25", label: "$0 - $25" },
-    { value: "25-50", label: "$25 - $50" },
-    { value: "50-100", label: "$50 - $100" },
-    { value: "100-500", label: "$100 - $500" },
-    { value: "500+", label: "$500+" },
+    { value: "all", label: "Semua Harga" },
+    { value: "0-100000", label: "Rp0 - Rp100.000" },
+    { value: "100000-250000", label: "Rp100.000 - Rp250.000" },
+    { value: "250000-500000", label: "Rp250.000 - Rp500.000" },
+    { value: "500000-1000000", label: "Rp500.000 - Rp1.000.000" },
+    { value: "1000000+", label: "Di atas Rp1.000.000" },
   ];
 
   const defaultCategories = [
-    { value: "all", label: "All Categories" },
-    { value: "beauty", label: "Beauty" },
-    { value: "fragrances", label: "Fragrances" },
-    { value: "furniture", label: "Furniture" },
-    { value: "groceries", label: "Groceries" },
-    { value: "laptops", label: "Laptops" },
-    { value: "mens-shirts", label: "Men's Shirts" },
-    { value: "mens-shoes", label: "Men's Shoes" },
-    { value: "smartphones", label: "Smartphones" },
-    { value: "womens-dresses", label: "Women's Dresses" },
-    { value: "womens-shoes", label: "Women's Shoes" },
+    { value: "all", label: "Semua Kategori" },
   ];
 
   const categoryList = categories.length > 0 ? categories : defaultCategories;
