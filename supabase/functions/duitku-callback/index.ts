@@ -9,7 +9,14 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
 };
 
-// Generate HMAC-SHA256 hex string using standard Web Crypto API
+function textResponse(body: string, status: number): Response {
+  return new Response(body, {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "text/plain" },
+  });
+}
+
+// Generate HMAC-SHA256 hex string using standard Web Crypto API.
 async function generateHmacSha256(data: string, secretKey: string): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -17,56 +24,51 @@ async function generateHmacSha256(data: string, secretKey: string): Promise<stri
     encoder.encode(secretKey),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
-  const signatureBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(data)
-  );
+  const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(data));
   return Array.from(new Uint8Array(signatureBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
 serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
-    return new Response("Method Not Allowed. Duitku callback requires HTTP POST.", {
-      status: 405,
-      headers: corsHeaders,
-    });
+    return textResponse("Method Not Allowed. Duitku callback requires HTTP POST.", 405);
   }
 
   try {
-    // 1. Retrieve Secret Key from Supabase Secrets
     const apiKey = Deno.env.get("DUITKU_API_KEY");
     const configuredMerchantCode = Deno.env.get("DUITKU_MERCHANT_CODE");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!apiKey || !configuredMerchantCode) {
-      // Do not log secret values or reveal which credential is missing.
+    if (!apiKey || !configuredMerchantCode || !supabaseUrl || !supabaseServiceKey) {
       console.error("Duitku callback configuration is incomplete");
-      return new Response("Bad Server Configuration", { status: 500, headers: corsHeaders });
+      return textResponse("Bad Server Configuration", 500);
     }
 
-    // 2. Parse Callback Request Payload (supports both application/x-www-form-urlencoded and application/json)
     const contentType = req.headers.get("content-type") || "";
     let params: Record<string, string> = {};
 
-    if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
+    if (
+      contentType.includes("application/x-www-form-urlencoded") ||
+      contentType.includes("multipart/form-data")
+    ) {
       const formData = await req.formData();
-      for (const [key, value] of formData.entries()) {
-        params[key] = String(value);
+      for (const [key, value] of formData.entries()) params[key] = String(value);
+    } else if (contentType.includes("application/json")) {
+      const jsonBody: unknown = await req.json();
+      if (!jsonBody || typeof jsonBody !== "object" || Array.isArray(jsonBody)) {
+        return textResponse("Bad Parameter", 400);
       }
+      for (const [key, value] of Object.entries(jsonBody)) params[key] = String(value);
     } else {
-      const jsonBody = await req.json().catch(() => ({}));
-      for (const [key, value] of Object.entries(jsonBody)) {
-        params[key] = String(value);
-      }
+      return textResponse("Unsupported Content Type", 415);
     }
 
     const merchantCode = params.merchantCode || params.merchantcode;
@@ -75,33 +77,35 @@ serve(async (req: Request) => {
     const signature = params.signature;
     const resultCode = params.resultCode || params.resultcode;
     const reference = params.reference;
-    const productDetail = params.productDetail || params.productDetails || "";
     const paymentCode = params.paymentCode || params.paymentMethod || "";
     const additionalParam = params.additionalParam || "";
 
-    // 3. Validate presence of required callback parameters
-    if (!merchantCode || !amount || !merchantOrderId || !signature) {
+    if (!merchantCode || !amount || !merchantOrderId || !signature || !resultCode) {
       console.warn("Duitku callback rejected: required parameters missing");
-      return new Response("Bad Parameter", {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "text/plain" },
-      });
+      return textResponse("Bad Parameter", 400);
     }
 
-    // Optional safety check for configured merchant code
-    if (configuredMerchantCode && merchantCode !== configuredMerchantCode) {
+    if (merchantCode !== configuredMerchantCode) {
       console.warn("Duitku callback rejected: merchant code mismatch");
-      return new Response("Bad Merchant Code", {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "text/plain" },
-      });
+      return textResponse("Bad Merchant Code", 400);
     }
 
-    // 4. Verify the current Duitku POP callback signature contract.
-    // stringToSign = merchantCode + amount + merchantOrderId
-    // signature = HMAC_SHA256(stringToSign, apiKey)
-    const stringToSign = `${merchantCode}${amount}${merchantOrderId}`;
-    const expectedSignature = await generateHmacSha256(stringToSign, apiKey);
+    // POP callback result codes: 00 = success, 01 = failed.
+    if (resultCode !== "00" && resultCode !== "01") {
+      console.warn("Duitku callback rejected: unsupported result code");
+      return textResponse("Bad Result Code", 400);
+    }
+
+    if (!/^\d+$/.test(amount) || !Number.isSafeInteger(Number(amount)) || Number(amount) <= 0) {
+      console.warn("Duitku callback rejected: invalid amount format");
+      return textResponse("Bad Amount", 400);
+    }
+
+    // Official POP callback formula: HMAC_SHA256(merchantCode + amount + merchantOrderId, apiKey).
+    const expectedSignature = await generateHmacSha256(
+      `${merchantCode}${amount}${merchantOrderId}`,
+      apiKey,
+    );
     const incomingSignature = signature.trim().toLowerCase();
 
     // Constant-time comparison for equal-length hexadecimal signatures.
@@ -112,72 +116,116 @@ serve(async (req: Request) => {
     for (let i = 0; i < compareLength; i++) {
       signatureDifference |= (expectedBytes[i] ?? 0) ^ (incomingBytes[i] ?? 0);
     }
-    if (signatureDifference !== 0) {
-      // Never log the API key, signed string, or signature values.
+    if (!/^[0-9a-f]{64}$/.test(incomingSignature) || signatureDifference !== 0) {
       console.warn("Duitku callback rejected: signature verification failed");
-      return new Response("Bad Signature", {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "text/plain" },
-      });
+      return textResponse("Bad Signature", 400);
     }
 
-    // 5. Signature is VALID! Determine payment status
-    // resultCode == "00" indicates Payment SUCCESS
-    // resultCode == "01" indicates Payment FAILED / PENDING
-    const isPaymentSuccess = resultCode === "00";
-    const paymentStatus = isPaymentSuccess ? "SUCCESS" : "FAILED";
+    const paymentStatus = resultCode === "00" ? "SUCCESS" : "FAILED";
+    const baseUrl = supabaseUrl.replace(/\/$/, "");
+    const authHeaders = {
+      apikey: supabaseServiceKey,
+      Authorization: `Bearer ${supabaseServiceKey}`,
+    };
 
-    console.info(`Duitku Callback Authenticated: Order ${merchantOrderId} is ${paymentStatus} (ResultCode: ${resultCode})`);
+    // Read and validate the persisted invoice before changing any payment state.
+    const orderUrl = `${baseUrl}/rest/v1/orders?select=merchant_order_id,amount,status,reference&merchant_order_id=eq.${encodeURIComponent(merchantOrderId)}`;
+    const orderRes = await fetch(orderUrl, { headers: authHeaders });
+    if (!orderRes.ok) {
+      console.error("Duitku callback could not read local order; HTTP status:", orderRes.status);
+      return textResponse("Order Lookup Failed", 500);
+    }
 
-    // 6. Update database record in Supabase (if Supabase credentials are configured)
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const orders: unknown = await orderRes.json();
+    if (!Array.isArray(orders) || orders.length !== 1) {
+      console.warn("Duitku callback rejected: order missing or ambiguous");
+      return textResponse("Order Not Found", 409);
+    }
 
-    if (supabaseUrl && supabaseServiceKey) {
-      try {
-        const updatePayload: Record<string, unknown> = {
-          status: paymentStatus,
-          result_code: resultCode,
-          reference: reference || null,
-          payment_method: paymentCode || null,
-          updated_at: new Date().toISOString(),
-        };
+    const order = orders[0] as {
+      merchant_order_id?: unknown;
+      amount?: unknown;
+      status?: unknown;
+      reference?: unknown;
+    };
+    const storedAmount = Number(order.amount);
+    if (
+      order.merchant_order_id !== merchantOrderId ||
+      !Number.isSafeInteger(storedAmount) ||
+      storedAmount !== Number(amount)
+    ) {
+      console.warn("Duitku callback rejected: local order or amount mismatch");
+      return textResponse("Order Amount Mismatch", 409);
+    }
 
-        if (additionalParam) {
-          updatePayload.additional_param = additionalParam;
-        }
+    if (reference && order.reference && reference !== order.reference) {
+      console.warn("Duitku callback rejected: provider reference mismatch");
+      return textResponse("Reference Mismatch", 409);
+    }
 
-        // Upsert / update order in 'orders' table by merchant_order_id
-        const dbRes = await fetch(`${supabaseUrl}/rest/v1/orders?merchant_order_id=eq.${encodeURIComponent(merchantOrderId)}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: supabaseServiceKey,
-            Authorization: `Bearer ${supabaseServiceKey}`,
-            Prefer: "return=representation",
-          },
-          body: JSON.stringify(updatePayload),
-        });
+    const currentStatus = typeof order.status === "string" ? order.status.toUpperCase() : "";
+    if (currentStatus === paymentStatus) {
+      // A verified duplicate callback is safe to acknowledge.
+      return textResponse("SUCCESS", 200);
+    }
+    if (currentStatus !== "PENDING") {
+      console.warn("Duitku callback rejected: invalid payment status transition");
+      return textResponse("Invalid Status Transition", 409);
+    }
 
-        if (!dbRes.ok) {
-          console.warn("Database order status update response status:", dbRes.status);
-        }
-      } catch (dbErr) {
-        console.error("Failed to update order status in Supabase database:", dbErr);
+    const updatePayload: Record<string, unknown> = {
+      status: paymentStatus,
+      result_code: resultCode,
+      reference: reference || order.reference || null,
+      payment_method: paymentCode || null,
+      updated_at: new Date().toISOString(),
+    };
+    if (additionalParam) updatePayload.additional_param = additionalParam;
+
+    // Conditional update avoids overwriting a status changed by another callback.
+    const updateUrl = `${baseUrl}/rest/v1/orders?merchant_order_id=eq.${encodeURIComponent(merchantOrderId)}&status=eq.${encodeURIComponent(String(order.status))}`;
+    const updateRes = await fetch(updateUrl, {
+      method: "PATCH",
+      headers: {
+        ...authHeaders,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(updatePayload),
+    });
+
+    if (!updateRes.ok) {
+      console.error("Duitku callback database update failed; HTTP status:", updateRes.status);
+      return textResponse("Order Update Failed", 500);
+    }
+
+    const updatedRows: unknown = await updateRes.json();
+    if (!Array.isArray(updatedRows)) {
+      console.error("Duitku callback database update returned an unexpected response");
+      return textResponse("Order Update Failed", 500);
+    }
+    if (updatedRows.length === 0) {
+      // A concurrent callback may have won the conditional update. Re-read to
+      // acknowledge only if it persisted the same verified result.
+      const verifyRes = await fetch(orderUrl, { headers: authHeaders });
+      if (!verifyRes.ok) {
+        console.error("Duitku callback could not verify concurrent update; HTTP status:", verifyRes.status);
+        return textResponse("Order Verification Failed", 500);
       }
+      const latestRows: unknown = await verifyRes.json();
+      const latest = Array.isArray(latestRows) && latestRows.length === 1
+        ? latestRows[0] as { status?: unknown }
+        : null;
+      if (latest?.status === paymentStatus) return textResponse("SUCCESS", 200);
+      console.warn("Duitku callback rejected: concurrent status transition conflict");
+      return textResponse("Status Transition Conflict", 409);
     }
 
-    // 7. CRITICAL: Duitku requires HTTP 200 with plaintext "SUCCESS" to acknowledge receipt
-    return new Response("SUCCESS", {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "text/plain" },
-    });
+    console.info(`Duitku callback processed: order ${merchantOrderId}, result ${resultCode}`);
+    return textResponse("SUCCESS", 200);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Internal Server Error";
-    console.error("Exception during Duitku callback processing:", error);
-    return new Response(`Error: ${message}`, {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "text/plain" },
-    });
+    // Avoid logging request bodies, signatures, or credentials.
+    console.error("Exception during Duitku callback processing:", error instanceof Error ? error.name : "UnknownError");
+    return textResponse("Callback Processing Failed", 500);
   }
 });
