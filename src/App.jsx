@@ -6,7 +6,6 @@ import ProductDetails from "./pages/ProductDetails";
 import NotFound from "./pages/NotFound";
 import Cart from "./pages/Cart";
 import About from "./pages/About";
-import AnnouncementBar from "./components/layout/AnnouncementBar";
 import Header from "./components/layout/Header";
 import Footer from "./components/layout/Footer";
 import CartDrawer from "./components/cart/CartDrawer";
@@ -33,9 +32,6 @@ const AppContent = () => {
     <div className="min-h-screen flex flex-col bg-[#FAF8F5] text-stone-900 selection:bg-[#F4EFEA] selection:text-[#9A3412]">
       {/* Toast Notification Container */}
       <Toast />
-
-      {/* Top Promotional Announcement */}
-      <AnnouncementBar />
 
       {/* Main Luxury Header */}
       <Header cartCount={cartCount} onCartClick={handleCartClick} />
