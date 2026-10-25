@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Star, ShoppingCart } from "lucide-react";
 import { getProductsByCategory } from "../../services/productApi";
 import { useCart } from "../../hooks/useCart";
+import { formatPrice } from "../../services/productApi";
 
 const RelatedProducts = ({ productId, category }) => {
   const [relatedProducts, setRelatedProducts] = useState([]);
@@ -20,7 +21,7 @@ const RelatedProducts = ({ productId, category }) => {
           const products = await getProductsByCategory(category);
           // Filter out current product and limit to 4 products
           const filtered = products
-            .filter((p) => p.id !== parseInt(productId))
+            .filter((p) => String(p.id) !== String(productId))
             .slice(0, 4);
           setRelatedProducts(filtered);
         }
@@ -47,7 +48,7 @@ const RelatedProducts = ({ productId, category }) => {
             Related Products
           </h2>
           <p className="mt-2 text-slate-500">
-            You might also like these products from the same category
+            Produk lain yang mungkin Anda sukai dari kategori yang sama
           </p>
         </div>
 
@@ -62,7 +63,7 @@ const RelatedProducts = ({ productId, category }) => {
               <Link to={`/products/${product.id}`}>
                 <div className="relative h-60 bg-slate-50 flex items-center justify-center rounded-t-3xl">
                   <img
-                    src={product.thumbnail}
+                    src={product.thumbnail || product.image_link}
                     alt={product.title}
                     loading="lazy"
                     className="max-h-50 max-w-full object-contain transition-transform duration-300 hover:scale-105"
@@ -93,7 +94,7 @@ const RelatedProducts = ({ productId, category }) => {
                 {/* Price & Add to Cart */}
                 <div className="flex items-center justify-between">
                   <p className="text-base font-bold text-slate-900">
-                    ${product.price}
+                    {formatPrice(product.price, product.currency)}
                   </p>
                   <button
                     onClick={() => addToCart(product)}
