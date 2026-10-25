@@ -5,6 +5,7 @@ import { ArrowLeft, ShoppingCart, Star } from "lucide-react";
 import { getProductById } from "../services/productApi";
 import RelatedProducts from "../components/product/RelatedProducts";
 import { useCart } from "../hooks/useCart";
+import { formatPrice } from "../services/productApi";
 
 const ProductDetails = () => {
   const { id } = useParams();
@@ -91,7 +92,7 @@ const ProductDetails = () => {
             {/* Product Image */}
             <div className="flex md:min-h-125 min-h-80 items-center justify-center rounded-2xl bg-white p-8">
               <img
-                src={product.images?.[0] || product.thumbnail}
+                src={product.images?.[0] || product.thumbnail || product.image_link}
                 alt={product.title}
                 loading="lazy"
                 className="md:max-h-110 max-h-80 w-full object-contain"
@@ -129,7 +130,7 @@ const ProductDetails = () => {
               {/* Price */}
               <div className="mt-6">
                 <span className="text-3xl font-bold text-slate-900">
-                  ${product.price}
+                  {formatPrice(product.price, product.currency)}
                 </span>
               </div>
 
@@ -141,13 +142,13 @@ const ProductDetails = () => {
               {/* Stock */}
               <div className="mt-6">
                 <span className="text-sm font-medium text-slate-600">
-                  Availability:
+                  Ketersediaan:
                 </span>
 
                 <span className="ml-2 text-sm font-semibold text-green-600">
                   {product.stock > 0
-                    ? `${product.stock} items available`
-                    : "Out of stock"}
+                    ? `${product.stock} tersedia`
+                    : "Stok habis"}
                 </span>
               </div>
 
