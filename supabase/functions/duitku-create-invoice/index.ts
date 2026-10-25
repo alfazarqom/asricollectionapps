@@ -94,9 +94,12 @@ serve(async (req: Request) => {
     const merchantCode = Deno.env.get("DUITKU_MERCHANT_CODE")?.trim();
     const apiKey = Deno.env.get("DUITKU_API_KEY");
     const environment = (Deno.env.get("DUITKU_ENV") || "sandbox").trim().toLowerCase();
-    const callbackUrl = Deno.env.get("DUITKU_CALLBACK_URL")?.trim();
-    const returnUrl = (Deno.env.get("DUITKU_RETURN_URL") || "https://asricollection.online/cart").trim();
     const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/$/, "");
+    const callbackUrl = (
+      Deno.env.get("DUITKU_CALLBACK_URL") ||
+      (supabaseUrl ? `${supabaseUrl}/functions/v1/duitku-callback` : "")
+    ).trim();
+    const returnUrl = (Deno.env.get("DUITKU_RETURN_URL") || "https://asricollection.online/cart").trim();
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!merchantCode || !apiKey || !callbackUrl || !supabaseUrl || !serviceKey) {
