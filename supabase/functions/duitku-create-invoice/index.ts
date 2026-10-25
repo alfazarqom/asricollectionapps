@@ -163,10 +163,11 @@ serve(async (req: Request) => {
       );
     }
 
-    // 3. Generate Timestamp & Signature for Duitku POP
-    // Standard POP formula: HMAC_SHA256(merchantCode + timestamp + apiKey, apiKey)
+    // 3. Generate Timestamp & Signature for Duitku POP.
+    // Official formula: HMAC_SHA256(merchantCode + timestamp, apiKey).
+    // The API key is the HMAC key; it is not part of the signed message.
     const timestamp = Date.now().toString();
-    const stringToSign = `${merchantCode}${timestamp}${apiKey}`;
+    const stringToSign = `${merchantCode}${timestamp}`;
     const signature = await generateHmacSha256(stringToSign, apiKey);
 
     // 4. Determine Duitku Endpoint
