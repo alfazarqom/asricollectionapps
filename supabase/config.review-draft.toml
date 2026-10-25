@@ -1,0 +1,17 @@
+# REVIEW DRAFT ONLY. Confirm this file does not conflict with existing project config before adoption.
+# The guest endpoints authenticate using a high-entropy order token; the provider callback uses Duitku HMAC.
+[functions.duitku-create-invoice]
+verify_jwt = false
+
+[functions.duitku-callback]
+verify_jwt = false
+
+[functions.get-payment-status]
+verify_jwt = false
+
+# Internal-only functions: keep gateway JWT verification enabled and invoke only server-side.
+[functions.reconcile-payment]
+verify_jwt = true
+
+[functions.expire-pending-payments]
+verify_jwt = true
