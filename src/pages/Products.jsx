@@ -53,16 +53,16 @@ const Products = () => {
       result = result.filter((product) => {
         const price = product.price;
         switch (priceRange) {
-          case "0-25":
-            return price <= 25;
-          case "25-50":
-            return price > 25 && price <= 50;
-          case "50-100":
-            return price > 50 && price <= 100;
-          case "100-500":
-            return price > 100 && price <= 500;
-          case "500+":
-            return price > 500;
+          case "0-100000":
+            return price <= 100000;
+          case "100000-250000":
+            return price > 100000 && price <= 250000;
+          case "250000-500000":
+            return price > 250000 && price <= 500000;
+          case "500000-1000000":
+            return price > 500000 && price <= 1000000;
+          case "1000000+":
+            return price > 1000000;
 
           default:
             return true;
