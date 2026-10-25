@@ -9,6 +9,7 @@ import {
 } from "../services/productApi";
 import { Link } from "react-router-dom";
 import { useCart } from "../hooks/useCart";
+import { formatPrice } from "../services/productApi";
 
 const Products = () => {
   const [products, setProducts] = useState([]);
@@ -136,7 +137,7 @@ const Products = () => {
                     <Link to={`/products/${product.id}`}>
                       <div className="relative  h-60 bg-slate-50 flex items-center justify-center rounded-t-3xl">
                         <img
-                          src={product.thumbnail}
+                          src={product.thumbnail || product.image_link}
                           alt={product.title}
                           loading="lazy"
                           className="max-h-50 max-w-full object-contain transition-transform duration-300 hover:scale-105"
@@ -163,7 +164,7 @@ const Products = () => {
                       </div>
                       <div className="flex items-center justify-between ">
                         <p className="text-base font-bold text-slate-900 ">
-                          ${product.price}
+                          {formatPrice(product.price, product.currency)}
                         </p>
                         <button
                           onClick={() => addToCart(product)}
