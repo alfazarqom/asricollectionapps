@@ -147,3 +147,31 @@ Semua nama, signature, grants dan perilaku final harus disepakati setelah kontra
 - Duitku POP: https://docs.duitku.com/pop/id/
 
 **Status akhir:** rencana untuk ditinjau. Tidak ada SQL/migrasi, perubahan data, secrets/config, deployment, merge, atau transaksi Sandbox yang dilakukan.
+
+
+## 9. Keputusan pengguna dan audit grants/consumer (2026-10-26)
+
+### Keputusan yang telah diberikan
+- Lingkungan target: project aktif `mvwflakurihhakdrlteg`; diperlakukan sebagai **production**.
+- Sumber produk: `public.products`.
+- Aturan harga: **belum dikonfirmasi**; jangan memilih `price`, `original_price`, atau formula diskon secara asumtif.
+- Sumber stok: **belum dikonfirmasi**; `public.products.stock` dan `public.products_contoh.stock_quantity` adalah field berbeda dan tidak tersinkronisasi.
+- TTL guest token: **24 jam**.
+- Langkah: susun SQL untuk ditinjau, bukan eksekusi.
+
+### Audit grants (read-only)
+Query `information_schema.role_table_grants` menunjukkan grants luas pada `anon` dan `authenticated` untuk `orders`, `order_items`, `products`, `promo_codes`, dan `users`, termasuk privilege `INSERT/SELECT/UPDATE/DELETE/TRUNCATE` (juga REFERENCES/TRIGGER). RLS tetap membatasi sebagian operasi, tetapi grants ini memperluas blast radius jika policy salah/terlalu permisif. Untuk `orders` dan `order_items`, kebijakan public SELECT dan INSERT dengan kondisi `true` mengizinkan akses langsung. `users` juga memiliki public SELECT `USING (true)` dan UPDATE `USING (true)`; ini merupakan temuan keamanan terpisah yang perlu triase, bukan diubah dalam draft checkout ini.
+
+Query fungsi pada schema `public` dan `private` hanya menemukan `handle_updated_at()` dan `set_updated_at()` dalam hasil katalog; tidak menemukan RPC checkout/order/payment/inventory yang sesuai. Kedua fungsi tersebut dapat dieksekusi oleh anon/authenticated, tetapi bukan RPC checkout. Tidak ada perubahan grants/policies dilakukan.
+
+### Audit consumer aplikasi (read-only; pemetaan belum lengkap)
+- `src/pages/Cart.jsx`: browser memanggil `createOrderInSupabase` untuk INSERT ke `orders` dan `order_items`; kegagalan pre-record ditangkap dan diabaikan sebelum browser tetap memanggil `duitku-create-invoice`. Browser juga mengirim total, harga/kuantitas item dan customer fields ke invoice endpoint.
+- `src/services/productApi.js`: `createOrderInSupabase` melakukan dua REST write terpisah (order dahulu, items kemudian; bukan satu transaksi), dan `getOrderByMerchantId` membaca `orders` beserta `order_items` berdasarkan `merchant_order_id`.
+- `supabase/functions/duitku-create-invoice/index.ts`: kontrak aktif menerima `paymentAmount`, `merchantOrderId`, `itemDetails` dan customer fields dari request; harus diubah terpisah setelah RPC/token design disepakati.
+- Pemetaan semua halaman admin, payment-status, riwayat customer, callback, dan dukungan operasional belum lengkap. Karena itu kebijakan RLS/grants final **belum boleh difinalisasi** dan tidak dimasukkan ke SQL draft.
+
+### Drift migration history vs schema aktif
+Riwayat Supabase memuat migrasi bernama `configure_asri_guest_checkout_backend`, `add_asri_shipping_rates_and_order_rpc`, `add_asri_order_idempotency`, beberapa migrasi callback/inventory, serta `create_order_payment_inventory_tables_v1`. Namun schema aktif yang teramati tidak menunjukkan tabel `payments`, `callback_events`, atau `inventory_reservations`, dan katalog fungsi tidak menunjukkan RPC yang seharusnya terkait. Isi sumber migrasi repository tidak berhasil diverifikasi dari path yang dicoba. **Jangan mengasumsikan migrasi lama aman dijalankan ulang**; lakukan rekonsiliasi definisi migration source, migration history, dan schema aktif sebelum SQL implementasi.
+
+### Status SQL draft
+File `docs/guest-checkout-db-migration-draft.sql` hanya mencakup DDL additive untuk kolom token/idempotensi dan index terkait. File ini **bukan migration final untuk checkout server-side**: belum berisi RPC transaksi, kalkulasi harga, reservasi stok, perubahan grants/RLS, atau pengalihan consumer. Alasan: aturan harga dan sumber stok belum diputuskan; pemetaan consumer belum lengkap; drift migration perlu direkonsiliasi. SQL draft tidak dieksekusi.
