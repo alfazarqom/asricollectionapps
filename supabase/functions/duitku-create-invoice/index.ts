@@ -99,7 +99,7 @@ serve(async (req: Request) => {
       Deno.env.get("DUITKU_CALLBACK_URL") ||
       (supabaseUrl ? `${supabaseUrl}/functions/v1/duitku-callback` : "")
     ).trim();
-    const returnUrl = (Deno.env.get("DUITKU_RETURN_URL") || "https://asricollection.online/cart").trim();
+    const returnUrl = (Deno.env.get("DUITKU_RETURN_URL") || "https://asricollection.online/#/cart").trim();
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!merchantCode || !apiKey || !callbackUrl || !supabaseUrl || !serviceKey) {
