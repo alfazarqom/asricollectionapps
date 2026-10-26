@@ -52,6 +52,24 @@ BEGIN
 END
 $guard$;
 
+-- Additional read-only audit findings (2026-10-26):
+-- - information_schema.role_table_grants reports broad anon/authenticated privileges
+--   (including INSERT/SELECT/UPDATE/DELETE/TRUNCATE) on orders/order_items/products/
+--   promo_codes/users. RLS is still a separate control and must be audited with grants.
+-- - orders/order_items have public SELECT USING (true) and INSERT WITH CHECK (true).
+-- - public.users has public SELECT USING (true) and UPDATE USING (true), a separate
+--   high-risk issue outside this checkout migration.
+-- - Only handle_updated_at() and set_updated_at() appeared in the queried public/private
+--   routine catalog; no checkout/order/payment/inventory RPC was found.
+-- - App consumer evidence: Cart.jsx inserts orders and order_items through productApi.js;
+--   the writes are separate REST calls. getOrderByMerchantId reads orders/order_items.
+--   duitku-create-invoice currently accepts client-supplied paymentAmount/itemDetails.
+--   Admin/status/history/callback consumer inventory remains incomplete.
+-- - Migration history lists old guest-checkout/idempotency/callback/inventory migrations,
+--   but active schema did not expose payments, callback_events, inventory_reservations,
+--   nor matching RPCs. Source migration files were not verified at the expected paths.
+--   Reconcile source/history/active schema before any production migration.
+--
 -- Proposed schema shape for review only (not executed while the guard remains):
 -- ALTER TABLE public.orders
 --   ADD COLUMN guest_access_token_hash text,
@@ -62,6 +80,13 @@ $guard$;
 --   ON public.orders (guest_access_token_hash)
 --   WHERE guest_access_token_hash IS NOT NULL;
 --
+-- Alternative if key-on-order is chosen after review:
+-- ALTER TABLE public.orders ADD COLUMN checkout_idempotency_key text;
+-- CREATE UNIQUE INDEX orders_checkout_idempotency_key_uidx
+--   ON public.orders (checkout_idempotency_key)
+--   WHERE checkout_idempotency_key IS NOT NULL;
+--
+-- Or, if idempotency retention/scope requires a dedicated table:
 -- CREATE TABLE public.checkout_idempotency (
 --   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 --   idempotency_key text NOT NULL UNIQUE,
@@ -71,7 +96,9 @@ $guard$;
 --   expires_at timestamptz NOT NULL
 -- );
 --
--- These proposed statements are intentionally commented out. Column types, index
+-- These proposed statements are intentionally commented out. Token TTL is 24 hours, but
+-- the database column alone does not enforce expiry. The final RPC and endpoint must.
+-- These are alternatives, not instructions to apply both. Column types, index
 -- strategy, idempotency retention, RPC signature, schema placement, and grants require
 -- review against the final checkout contract. No RLS policy or table grant changes are
 -- proposed in this draft because consumer migration has not been completed.
