@@ -160,7 +160,7 @@ serve(async (req: Request) => {
       return new Response("Order Not Found", { status: 404, headers: corsHeaders });
     }
     const order = orders[0] as Record<string, unknown>;
-    const storedAmount = Number(order.amount ?? order.total_amount);
+    const storedAmount = Number(order.total_amount ?? order.amount);
     if (!Number.isSafeInteger(Number(amount)) || !Number.isSafeInteger(storedAmount) ||
       Number(amount) !== storedAmount) {
       console.warn("Duitku callback amount mismatch; no state change applied.");
