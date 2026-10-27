@@ -6,6 +6,7 @@ import ProductDetails from "./pages/ProductDetails";
 import NotFound from "./pages/NotFound";
 import Cart from "./pages/Cart";
 import About from "./pages/About";
+import Orders from "./pages/Orders";
 import Header from "./components/layout/Header";
 import Footer from "./components/layout/Footer";
 import CartDrawer from "./components/cart/CartDrawer";
@@ -43,6 +44,9 @@ const AppContent = () => {
           <Route path="/products" element={<Products />} />
           <Route path="/products/:id" element={<ProductDetails />} />
           <Route path="/cart" element={<Cart />} />
+          <Route path="/orders" element={<Orders />} />
+          <Route path="/orders/:id" element={<Orders />} />
+          <Route path="/pesanan/:id" element={<Orders />} />
           <Route path="/about" element={<About />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

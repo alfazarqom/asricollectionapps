@@ -111,6 +111,9 @@ const Cart = () => {
           email: "customer@asricollection.com",
           customerVaName: "Pelanggan Asri Collection",
           phoneNumber: "082156764434",
+          returnUrl: window.location.hash
+            ? `${window.location.origin}${window.location.pathname}#/orders?merchantOrderId=${merchantOrderId}`
+            : `${window.location.origin}/orders?merchantOrderId=${merchantOrderId}`,
           itemDetails: cartItems.map((item) => ({
             name: `${item.title} (${item.variant || 'Standard'})`.slice(0, 50),
             price: item.price,
@@ -128,6 +131,23 @@ const Cart = () => {
       const data = await response.json();
 
       if (data.statusCode === "00" && data.paymentUrl) {
+        // Save to local recent orders
+        try {
+          const stored = localStorage.getItem("asri_recent_orders");
+          const list = stored ? JSON.parse(stored) : [];
+          list.unshift({
+            orderNumber: merchantOrderId,
+            reference: data.reference,
+            totalAmount: grandTotal,
+            customerName: "Pelanggan Asri Collection",
+            status: "PENDING",
+            createdAt: new Date().toISOString(),
+          });
+          localStorage.setItem("asri_recent_orders", JSON.stringify(list.slice(0, 15)));
+        } catch {
+          // Ignore storage error
+        }
+
         setCheckoutNotice({
           type: "success",
           title: "Tagihan Berhasil Dibuat!",
@@ -139,15 +159,16 @@ const Cart = () => {
       } else {
         setCheckoutNotice({
           type: "info",
-          title: "Informasi Integrasi Duitku POP",
-          message: data.statusMessage || `Tagihan sebesar ${formatPrice(grandTotal)} siap diproses. Pastikan secrets Duitku telah diunggah ke Supabase Edge Functions.`,
+          title: "Status Integrasi Duitku POP",
+          message: data.statusMessage || `Gagal membuat invoice tagihan. Pastikan secrets Duitku telah diunggah ke Supabase Edge Functions.`,
+          instruction: data.instruction || data.details || null,
         });
       }
-    } catch {
+    } catch (err) {
       setCheckoutNotice({
         type: "info",
-        title: "Integrasi Duitku POP Siap",
-        message: `Edge function 'duitku-create-invoice' telah dipersiapkan di /supabase/functions. Tagihan: ${formatPrice(grandTotal)} (Order ID: ${merchantOrderId}). Anda juga dapat memesan langsung via WhatsApp resmi.`,
+        title: "Informasi Integrasi Duitku POP",
+        message: err.message || `Tagihan: ${formatPrice(grandTotal)} (Order ID: ${merchantOrderId}). Anda juga dapat memesan langsung via WhatsApp resmi.`,
       });
     } finally {
       setIsCheckingOut(false);
@@ -425,9 +446,14 @@ const Cart = () => {
 
                 {/* Checkout Notice */}
                 {checkoutNotice && (
-                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
                     <p className="font-semibold">{checkoutNotice.title}</p>
-                    <p>{checkoutNotice.message}</p>
+                    <p className="leading-relaxed">{checkoutNotice.message}</p>
+                    {checkoutNotice.instruction && (
+                      <div className="p-2.5 bg-amber-100/70 rounded-lg font-mono text-[11px] text-amber-950 break-all select-all">
+                        {checkoutNotice.instruction}
+                      </div>
+                    )}
                   </div>
                 )}
 

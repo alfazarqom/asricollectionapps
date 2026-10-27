@@ -8,6 +8,7 @@ const navigation = [
   { label: "Katalog Belanja", to: "/products" },
   { label: "Koleksi Gaun", to: "/products?category=womens-dresses" },
   { label: "Tas & Aksesoris", to: "/products?category=womens-bags" },
+  { label: "Lacak Pesanan", to: "/orders" },
   { label: "Tentang Kami", to: "/about" },
 ];
 
