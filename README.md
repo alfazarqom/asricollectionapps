@@ -1,318 +1,137 @@
-# SHOP.CO --- React E-commerce Store
+# Asri Collection — Online Store
 
-A modern, responsive e-commerce store built with **React, Vite, Tailwind
-CSS, and React Router**.\
-The project uses the **DummyJSON Products API** for product data and
-implements a complete shopping experience with product browsing,
-filtering, product details, cart management, and persistent cart data.
+Frontend aplikasi toko online Asri Collection yang dibangun dengan React, Vite, JavaScript, Tailwind CSS, dan React Router. Repository ini berisi aplikasi frontend; database dan Edge Functions dikelola terpisah di Supabase.
 
-## 🚀 Live Demo
+> **Status integrasi penting:** berdasarkan pemeriksaan kode saat README ini diperbarui, `src/services/productApi.js` masih membaca produk langsung dari tabel Supabase `products` dan masih memiliki fallback ke DummyJSON serta data produk lokal. Edge Function Supabase `get-products` tersedia, tetapi frontend belum sepenuhnya menggunakannya sebagai sumber produk utama. Jangan menganggap integrasi frontend–Edge Function sudah selesai sampai perubahan kode dan pengujian dilakukan.
 
-**Vercel:** https://react-ecommerce-store-f2mu.vercel.app
+## Fitur frontend
 
-## 📸 Screenshots
+- Halaman beranda dan daftar produk
+- Detail produk berdasarkan ID
+- Pencarian dan penyaringan produk berdasarkan kategori
+- Keranjang belanja dengan Context API
+- Drawer keranjang, ubah kuantitas, dan hapus item
+- Penyimpanan keranjang melalui browser `localStorage`
+- Banner promosi dan halaman Tentang
+- Halaman daftar pesanan dan halaman 404
+- Komponen UI responsif
 
-### Home Page
+Daftar fitur di atas menjelaskan cakupan UI yang ada pada kode; bukan pernyataan bahwa seluruh alur checkout atau pembayaran sudah lolos pengujian produksi.
 
-![alt text](home.png)
+## Teknologi
 
-### Products Listing
+| Teknologi | Penggunaan |
+| --- | --- |
+| React | Komponen dan UI |
+| Vite | Development server dan build |
+| Tailwind CSS | Styling |
+| React Router | Routing sisi klien |
+| Supabase JS | Akses data Supabase |
+| React Context API | State keranjang |
+| Lucide React | Ikon |
+| React Slick | Slider |
+| `localStorage` | Persistensi keranjang di browser |
 
-![alt text](products-list.png)
-
-### Product Details
-
-![alt text](product-details.png)
-
----
-
-## ✨ Features
-
-- Responsive e-commerce UI
-- Hero image slider
-- Featured Products section
-- New Arrivals section
-- Product listing page
-- Dynamic product details page
-- Product category filtering
-- Product price filtering
-- Product rating display
-- Related products
-- Add to Cart functionality
-- Prevent duplicate cart products
-- Increase/decrease product quantity
-- Remove products from cart
-- Cart drawer
-- Cart item count in header
-- Cart total price calculation
-- Cart persistence using `localStorage`
-- Responsive mobile navigation
-- Loading states
-- API error handling
-- 404 Not Found page
-- Responsive design for desktop, tablet, and mobile
-
----
-
-## 🛠️ Tech Stack
-
-Technology Purpose
-
----
-
-React UI development
-Vite Development and production build
-Tailwind CSS Styling and responsive design
-React Router Client-side routing
-Context API Global cart state
-JavaScript Application logic
-Lucide React Icons
-React Slick Hero slider
-DummyJSON API Product data
-LocalStorage Cart persistence
-
----
-
-## 📁 Project Structure
+## Struktur proyek
 
 ```text
 src/
-├── assets/
-│   └── images/
-│
 ├── components/
 │   ├── cart/
 │   ├── home/
 │   ├── layout/
 │   ├── product/
 │   └── ui/
-│
 ├── context/
-│   ├── CartContext.jsx
-│   └── cart.js
-│
 ├── hooks/
-│   └── useCart.js
-│
 ├── pages/
-│   ├── Home.jsx
-│   ├── Products.jsx
-│   ├── ProductDetails.jsx
-│   ├── About.jsx
-│   ├── Cart.jsx
-│   └── NotFound.jsx
-│
 ├── services/
 │   └── productApi.js
-│
 ├── utils/
-│
 ├── App.jsx
 ├── index.css
 └── main.jsx
 ```
 
----
+## Sumber data dan kontrak API
 
-## 🔌 API
+### Kondisi kode saat ini
 
-Product information is loaded from the DummyJSON Products API.
+- Produk: `src/services/productApi.js` melakukan query langsung ke tabel `products`, termasuk filter `is_active`. Jika query gagal atau tidak menghasilkan data, kode dapat beralih ke DummyJSON dan data lokal.
+- Detail produk, pencarian, dan kategori: memiliki jalur query langsung dan/atau fallback sendiri.
+- Kategori dan banner: diambil dari tabel Supabase `categories` dan `banners`, dengan kategori/banner lokal sebagai fallback.
+- Pesanan: frontend memiliki fungsi yang melakukan insert ke `orders` dan kemudian ke `order_items` secara terpisah.
 
-**API:**
+### Target integrasi produk
 
-```text
-https://dummyjson.com/products
-```
+Edge Function `get-products` direncanakan menjadi sumber data produk utama. Sebelum integrasi dianggap selesai, audit dan implementasi harus memastikan bahwa:
 
-The application uses API data for:
+1. Semua jalur produk (daftar, detail, pencarian, kategori, dan produk terkait) menggunakan sumber data dan kontrak yang konsisten.
+2. Pemetaan respons ke komponen UI dilakukan secara eksplisit, termasuk `price`, `sale_price`, `currency`, `availability`, `stock_quantity`, `image_url`, `additional_image_urls`, dan `labels`.
+3. `availability` diperlakukan sebagai status ketersediaan utama; stok ditampilkan terpisah sesuai aturan bisnis.
+4. Data produk lokal atau DummyJSON tidak ditampilkan sebagai produk toko ketika API gagal. Tampilkan keadaan error/kosong yang jelas, kecuali fallback tersebut secara eksplisit dimaksudkan untuk mode demo.
+5. Harga dan total pembayaran divalidasi di backend, bukan dipercaya dari nilai yang dikirim browser.
 
-- Product listing
-- Product images
-- Product title
-- Product price
-- Product rating
-- Product category
-- Product description
-- Product details
-- Related product sections
+Dokumentasi ini tidak menyatakan bahwa semua poin target di atas sudah diterapkan.
 
----
+## Routing
 
-## 🛒 Cart Management
+| Path | Halaman |
+| --- | --- |
+| `/` | Beranda |
+| `/products` | Daftar produk |
+| `/products/:id` | Detail produk |
+| `/cart` | Keranjang |
+| `/orders` | Daftar pesanan |
+| `/orders/:id` | Rute pesanan |
+| `/pesanan/:id` | Alias rute pesanan |
+| `/about` | Tentang |
+| `*` | Halaman tidak ditemukan |
 
-The cart is managed using **React Context API**.
+Rute yang terdaftar tidak dengan sendirinya membuktikan bahwa seluruh fungsi pesanan atau pembayaran telah terintegrasi dan teruji.
 
-### Cart flow
+## Persiapan lokal
 
-```text
-Product
-   ↓
-Add to Cart
-   ↓
-CartContext
-   ↓
-Cart Items
-   ↓
-Cart Drawer
-```
-
-If a product already exists in the cart, another click on **Add to
-Cart** does not create a duplicate item.
-
-Products can also be removed completely from the cart.
-
----
-
-## 💾 Cart Persistence
-
-Cart data is stored in browser `localStorage`.
-
-```text
-Add Product
-     ↓
-Cart Context
-     ↓
-localStorage
-     ↓
-Refresh Browser
-     ↓
-Cart Restored
-```
-
-This allows the cart to remain available after refreshing the page.
-
----
-
-## 🧭 Routes
-
-Route Page
-
----
-
-`/` Home
-`/products` Product Listing
-`/products/:id` Product Details
-`/cart` Cart
-`/about` About
-`*` 404 Not Found
-
----
-
-## ⚙️ Installation
-
-Clone the repository:
-
-```bash
-git clone <https://github.com/adilcodeofduty/react-ecommerce-store.git>
-```
-
-Go to the project folder:
-
-```bash
-cd react-ecommerce-store
-```
-
-Install dependencies:
+Pastikan Node.js dan npm tersedia, lalu jalankan:
 
 ```bash
 npm install
-```
-
-Start the development server:
-
-```bash
 npm run dev
 ```
 
-Open the local URL shown by Vite.
+Vite akan menampilkan alamat lokal untuk membuka aplikasi.
 
----
+### Variabel lingkungan
 
-## 📦 Production Build
+Periksa file konfigurasi dan penggunaan environment variable di repository sebelum menjalankan aplikasi. Isi nilai yang diperlukan di file lingkungan lokal yang sesuai. Jangan commit secret, service-role key, API key pembayaran, atau kredensial privat ke repository. Variabel yang berawalan `VITE_` dapat terekspos ke browser dan hanya boleh berisi nilai yang memang aman untuk publik.
 
-Create a production build:
+## Pemeriksaan kualitas
 
-```bash
-npm run build
-```
-
-Preview the production build locally:
-
-```bash
-npm run preview
-```
-
----
-
-## 🧹 Code Quality
-
-Run ESLint:
+Skrip yang tersedia di `package.json`:
 
 ```bash
 npm run lint
+npm run build
+npm run preview
 ```
 
-The project is maintained with ESLint for React and JavaScript
-code-quality checks.
+Jalankan lint dan build sebelum mengajukan perubahan. README ini sendiri belum menjadi bukti bahwa pemeriksaan tersebut telah dijalankan atau lulus.
 
----
+## Batas keamanan dan kesiapan produksi
 
-## 📱 Responsive Design
+- Kebijakan RLS dan grants Supabase harus diperiksa sesuai akses yang benar-benar dibutuhkan aplikasi.
+- Jangan menambahkan policy atau mengubah database tanpa audit dan persetujuan terpisah.
+- Pembuatan pesanan yang dilakukan melalui beberapa operasi frontend berisiko menghasilkan pesanan tanpa item lengkap apabila salah satu operasi gagal; pertimbangkan operasi backend yang atomik.
+- Edge Function pembayaran harus memvalidasi input, signature callback sesuai kontrak penyedia, idempotensi, status transaksi, dan nilai pembayaran.
+- Status aktif suatu Edge Function bukan bukti bahwa alur pembayaran aman atau siap produksi.
 
-The application is designed to work across:
+## Alur perubahan
 
-- Desktop
-- Laptop
-- Tablet
-- Mobile
+Lakukan audit read-only terlebih dahulu, dokumentasikan temuan dan rekomendasi, sepakati ruang lingkup perubahan, implementasikan pada branch kerja, kemudian jalankan verifikasi. Jangan mengubah database aktif, secrets, deployment, atau melakukan merge tanpa persetujuan eksplisit.
 
-Responsive areas include:
+## Informasi repository
 
-- Header navigation
-- Mobile menu
-- Hero slider
-- Product grids
-- Product details
-- Filters
-- Cart drawer
-- About page
-- Footer
+- Repository: [alfazarqom/asricollectionapps](https://github.com/alfazarqom/asricollectionapps)
+- Frontend: React + Vite
+- Backend/data: Supabase dan Edge Functions (dikelola terpisah)
 
----
-
-## 🎯 Project Highlights
-
-This project demonstrates practical React development concepts
-including:
-
-- Component-based architecture
-- Reusable React components
-- React Hooks
-- Context API
-- Custom Hooks
-- React Router
-- API integration
-- Dynamic routes
-- State management
-- LocalStorage persistence
-- Responsive Tailwind CSS
-- Loading and error states
-- Reusable product UI
-- Production build and deployment
-
----
-
-## 👨‍💻 Author
-
-**Adil**
-
-Frontend Developer
-
-Built with React, Tailwind CSS, and modern frontend development
-practices.
-
----
-
-## 📄 License
-
-This project is created for learning, practice, and portfolio purposes.
